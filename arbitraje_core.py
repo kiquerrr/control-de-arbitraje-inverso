@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 # ==========================================================
 # ARCHIVO: arbitraje_core.py
-# DESCRIPCION: Clase base con logica de arbitraje. TODAS las tasas y limites son dinamicos.
+# DESCRIPCION: Clase base con logica de arbitraje mejorada.
+# VERSION: 2.0
 # ==========================================================
 
 import math
@@ -9,8 +10,7 @@ import math
 class CicloArbitraje:
     """
     Clase que encapsula los parametros, tasas y la logica de calculo.
-    Todas las configuraciones del ciclo (dias, limites, ciclos diarios) son
-    pasadas al inicializar para maxima flexibilidad.
+    VERSION MEJORADA con metodos adicionales de analisis.
     """
     
     def __init__(self, 
@@ -83,3 +83,43 @@ class CicloArbitraje:
     def get_tasa_rentabilidad_por_ciclo(self) -> float:
         """Retorna la tasa de rentabilidad por ciclo como factor."""
         return self.tasa_rentabilidad_por_ciclo
+    
+    # ========== NUEVOS METODOS ==========
+    
+    def get_tasa_minima_competitiva(self, margen_competitividad=0.02):
+        """Calcula la tasa minima para ser competitivo en P2P"""
+        return self.COSTO_COMPRA_TARJETA * (1 + margen_competitividad) / (1 - self.COMISION_BINANCE_P2P)
+    
+    def es_rentable(self, tasa_venta_propuesta: float) -> tuple:
+        """Valida si una tasa propuesta es rentable y retorna (es_rentable, spread, roi)"""
+        tasa_neta = tasa_venta_propuesta * (1 - self.COMISION_BINANCE_P2P)
+        spread = (tasa_neta / self.COSTO_COMPRA_TARJETA) - 1
+        roi_estimado = spread * 100
+        return (spread > 0, spread, roi_estimado)
+    
+    def breakdown_operacion(self, capital_usd: float, ciclos: int) -> dict:
+        """Retorna un desglose detallado de la operacion"""
+        usdt_comprado = self.calcular_usdt_comprado(capital_usd, ciclos)
+        ganancia_neta = self.calcular_ganancia_neta(capital_usd, ciclos)
+        
+        ingreso_bruto_venta = usdt_comprado * self.tasa_venta_p2p_publicada
+        comisiones_totales = usdt_comprado * self.tasa_venta_p2p_publicada * self.COMISION_BINANCE_P2P
+        
+        return {
+            'capital_inicial': capital_usd,
+            'ciclos_completados': ciclos,
+            'usdt_total_comprado': usdt_comprado,
+            'costo_total_compra': capital_usd,
+            'ingreso_bruto_venta': ingreso_bruto_venta,
+            'comisiones_p2p': comisiones_totales,
+            'ingreso_neto_venta': ingreso_bruto_venta - comisiones_totales,
+            'ganancia_neta': ganancia_neta,
+            'capital_final': capital_usd + ganancia_neta,
+            'roi_dia': (ganancia_neta / capital_usd) * 100,
+            'rentabilidad_por_ciclo': self.get_rentabilidad_porcentual_por_ciclo()
+        }
+    
+    def calcular_comision_total(self, capital_usd: float, ciclos: int) -> float:
+        """Calcula el total de comisiones pagadas en la operacion"""
+        usdt_total = self.calcular_usdt_comprado(capital_usd, ciclos)
+        return usdt_total * self.tasa_venta_p2p_publicada * self.COMISION_BINANCE_P2P

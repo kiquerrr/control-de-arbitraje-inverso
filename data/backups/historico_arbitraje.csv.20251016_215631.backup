@@ -1,0 +1,2 @@
+Dia,Fecha,C_Inicial_USD,Tasa_Venta_P2P,Ciclos_Completados,USDT_Comprado_Total,Ganancia_Bruta_Diaria,Ganancia_Retenida,Ganancia_Retirada,C_Final_USD,Costo_Compra_USD,Comision_P2P_Aplicada,Tipo_Operacion,ROI_Dia
+1,2025-10-16,100.0,1.0688,3,293.0787,6.11,6.11,0.0,106.11,1.0442,0.0035,CAPITAL_FRESCO,6.11

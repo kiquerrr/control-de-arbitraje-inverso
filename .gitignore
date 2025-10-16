@@ -1,3 +1,5 @@
 venv/
 __pycache__/
 *.csv
+data/backups/
+main.py.corrupto

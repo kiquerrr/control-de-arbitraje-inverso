@@ -62,8 +62,8 @@ def cargar_estado():
                     capital_global = 0.0
             return saldo, dias, capital_global
         except Exception as e:
-            print(f"Advertencia: Error al cargar estado: {e}")
-            print("Se creara un nuevo ciclo.")
+            print(f"?? Error al cargar estado: {e}")
+            print("?? Se creará un nuevo ciclo.")
             return 0.0, 0, 0.0
     return 0.0, 0, 0.0
 
@@ -100,7 +100,7 @@ def cargar_historial() -> pd.DataFrame:
             # Validar columnas minimas
             columnas_requeridas = ['Dia', 'Fecha', 'C_Inicial_USD']
             if not all(col in df.columns for col in columnas_requeridas):
-                print("Advertencia: CSV corrupto. Creando backup y nuevo archivo.")
+                print("?? CSV corrupto. Creando backup y nuevo archivo.")
                 crear_backup(ARCHIVO_HISTORICO)
                 return crear_dataframe_vacio()
             
@@ -115,14 +115,15 @@ def cargar_historial() -> pd.DataFrame:
             return df
             
         except Exception as e:
-            print(f"Error al leer CSV: {e}")
+            print(f"? Error al leer CSV: {e}")
             crear_backup(ARCHIVO_HISTORICO)
             return crear_dataframe_vacio()
     else:
         return crear_dataframe_vacio()
 
 def guardar_registro(df_historico: pd.DataFrame, nuevo_registro: dict):
-    """Anade un nuevo registro y guarda el DataFrame en CSV."""
+    """Añade un nuevo registro y guarda el DataFrame en CSV."""
+    # Crear backup antes de guardar
     if os.path.exists(ARCHIVO_HISTORICO):
         crear_backup(ARCHIVO_HISTORICO)
     
@@ -143,14 +144,14 @@ def resumen_final(df_historico: pd.DataFrame, saldo_final_boveda: float, dias_ci
     else:
         roi_diario_promedio = 0
 
-    imprimir_titulo("RESUMEN DE CIERRE DE CICLO")
+    imprimir_titulo("?? RESUMEN DE CIERRE DE CICLO")
     
-    print(f"\nDURACION DEL CICLO: {dias_ciclo_total} Dias")
-    print(f"CAPITAL INICIAL: {formatear_moneda(capital_inicial_global)}")
-    print(f"CAPITAL FINAL: {formatear_moneda(saldo_final_boveda)} (Limite: {formatear_moneda(LIMITE_FINAL_USD)})")
-    print(f"GANANCIA NETA TOTAL: {formatear_moneda(ganancia_neta_total_real)}")
-    print(f"ROI TOTAL: {formatear_porcentaje(roi_total)}")
-    print(f"ROI DIARIO PROMEDIO (Compuesto): {formatear_porcentaje(roi_diario_promedio, 3)}")
+    print(f"\n??  DURACIÓN DEL CICLO: {dias_ciclo_total} Días")
+    print(f"?? CAPITAL INICIAL: {formatear_moneda(capital_inicial_global)}")
+    print(f"?? CAPITAL FINAL: {formatear_moneda(saldo_final_boveda)} (Límite: {formatear_moneda(LIMITE_FINAL_USD)})")
+    print(f"?? GANANCIA NETA TOTAL: {formatear_moneda(ganancia_neta_total_real)}")
+    print(f"?? ROI TOTAL: {formatear_porcentaje(roi_total)}")
+    print(f"?? ROI DIARIO PROMEDIO (Compuesto): {formatear_porcentaje(roi_diario_promedio, 3)}")
     
     imprimir_separador("-")
 
@@ -158,9 +159,9 @@ def resumen_final(df_historico: pd.DataFrame, saldo_final_boveda: float, dias_ci
     monto_ahorro_btc = ganancia_neta_total_real * PORCENTAJE_AHORRO_BTC
     monto_utilidad_operativa = saldo_final_boveda - monto_ahorro_btc
 
-    print(f"\nDISTRIBUCION DE GANANCIAS:")
-    print(f"   1. AHORRO EN BITCOIN ({PORCENTAJE_AHORRO_BTC*100:.0f}%): {formatear_moneda(monto_ahorro_btc)} -> Convertir a BTC")
-    print(f"   2. CAPITAL PARA PROXIMO CICLO: {formatear_moneda(monto_utilidad_operativa)}")
+    print(f"\n?? DISTRIBUCIÓN DE GANANCIAS:")
+    print(f"   1. AHORRO EN BITCOIN ({PORCENTAJE_AHORRO_BTC*100:.0f}%): {formatear_moneda(monto_ahorro_btc)} ? Convertir a BTC")
+    print(f"   2. CAPITAL PARA PRÓXIMO CICLO: {formatear_moneda(monto_utilidad_operativa)}")
     
     imprimir_separador("-")
     
@@ -168,10 +169,10 @@ def resumen_final(df_historico: pd.DataFrame, saldo_final_boveda: float, dias_ci
     total_usdt_operado = df_historico['USDT_Comprado_Total'].sum()
     total_ciclos = df_historico['Ciclos_Completados'].sum()
     
-    print(f"\nESTADISTICAS DEL CICLO:")
+    print(f"\n?? ESTADÍSTICAS DEL CICLO:")
     print(f"   Total USDT Operado: {total_usdt_operado:,.2f} USDT")
     print(f"   Total Ciclos Completados: {total_ciclos}")
-    print(f"   Promedio Ciclos/Dia: {total_ciclos/dias_ciclo_total:.1f}")
+    print(f"   Promedio Ciclos/Día: {total_ciclos/dias_ciclo_total:.1f}")
     
     # Calcular comisiones totales pagadas
     if 'Comision_P2P_Aplicada' in df_historico.columns:
@@ -198,31 +199,31 @@ def preview_operacion(capital: float, tasa_venta: float, costo_compra: float, ci
         
         breakdown = simulacion.breakdown_operacion(capital, ciclos)
         
-        imprimir_titulo("PROYECCION DE LA OPERACION", "=")
+        imprimir_titulo("?? PROYECCIÓN DE LA OPERACIÓN", "=")
         
-        print(f"\nDATOS DE ENTRADA:")
+        print(f"\n?? DATOS DE ENTRADA:")
         print(f"   Capital a Operar:      {formatear_moneda(capital)}")
         print(f"   Tasa de Venta P2P:     {tasa_venta:.4f} USD/USDT")
         print(f"   Costo de Compra:       {costo_compra:.4f} USD/USDT")
         print(f"   Ciclos a Completar:    {ciclos}")
-        print(f"   Comision P2P:          {formatear_porcentaje(COMISION_P2P_MAKER * 100)}")
+        print(f"   Comisión P2P:          {formatear_porcentaje(COMISION_P2P_MAKER * 100)}")
         
-        print(f"\nRESULTADOS PROYECTADOS:")
+        print(f"\n?? RESULTADOS PROYECTADOS:")
         print(f"   USDT Total a Operar:   {breakdown['usdt_total_comprado']:,.2f} USDT")
         print(f"   Ingreso Bruto Venta:   {formatear_moneda(breakdown['ingreso_bruto_venta'])}")
         print(f"   Comisiones P2P:        {formatear_moneda(breakdown['comisiones_p2p'])}")
         print(f"   Ingreso Neto Venta:    {formatear_moneda(breakdown['ingreso_neto_venta'])}")
         print(f"   Ganancia Neta:         {formatear_moneda(breakdown['ganancia_neta'])}")
         print(f"   Capital Final:         {formatear_moneda(breakdown['capital_final'])}")
-        print(f"   ROI del Dia:           {formatear_porcentaje(breakdown['roi_dia'])}")
+        print(f"   ROI del Día:           {formatear_porcentaje(breakdown['roi_dia'])}")
         print(f"   Rentabilidad/Ciclo:    {formatear_porcentaje(breakdown['rentabilidad_por_ciclo'])}")
         
         imprimir_separador()
         
-        return confirmar_accion("\nConfirmar operacion?")
+        return confirmar_accion("\n¿Confirmar operación?")
         
     except ValueError as e:
-        print(f"\nERROR: {e}")
+        print(f"\n? ERROR: {e}")
         return False
 
 # --------------------------------------------------------------------------
@@ -240,52 +241,54 @@ def ejecutar_dia():
     if DIAS_CICLO_ACTUAL == 0:
         # --- INICIO DEL MACRO CICLO (DIA 1) ---
         dia_actual = 1
-        imprimir_titulo("INICIO DE NUEVO CICLO")
+        imprimir_titulo("?? INICIO DE NUEVO CICLO")
         
         DIAS_CICLO_ACTUAL = validar_entero_rango(
-            "-> Ingrese la duracion total del ciclo (1-90 dias): ", 1, 90
+            "-> Ingrese la duración total del ciclo (1-90 días): ", 1, 90
         )
         
         saldo_boveda = 0.0
         CAPITAL_INICIAL_GLOBAL = 0.0
+
     else:
         # --- CONTINUACION DEL MACRO CICLO ---
         if df_historico.empty:
-            print("Advertencia: Estado guardado pero historial vacio.")
-            if confirmar_accion("Reiniciar desde dia 1?"):
+            # Si el historial est� vac�o pero hay estado guardado, hay inconsistencia
+            print("?? ADVERTENCIA: Hay estado guardado pero sin historial.")
+            if confirmar_accion("�Reiniciar desde d�a 1?"):
                 dia_actual = 1
                 saldo_boveda = 0.0
                 CAPITAL_INICIAL_GLOBAL = 0.0
             else:
-                print("Operacion cancelada.")
+                print("? Operaci�n cancelada.")
                 return
         else:
             ultimo_registro = df_historico.iloc[-1]
             dia_actual = int(ultimo_registro['Dia']) + 1
 
         if dia_actual > DIAS_CICLO_ACTUAL:
-            print(f"\nEL CICLO HA FINALIZADO (Dia {DIAS_CICLO_ACTUAL}).")
+            print(f"\n? EL CICLO HA FINALIZADO (Día {DIAS_CICLO_ACTUAL}).")
             resumen_final(df_historico, saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
             
-            if confirmar_accion("\nDesea ver el reporte detallado?"):
+            if confirmar_accion("\n¿Desea ver el reporte detallado?"):
                 generar_reporte_ciclo(ARCHIVO_HISTORICO, CAPITAL_INICIAL_GLOBAL)
             
-            if confirmar_accion("\nDesea iniciar un nuevo ciclo?"):
+            if confirmar_accion("\n¿Desea iniciar un nuevo ciclo?"):
                 os.remove(ARCHIVO_CONFIG)
-                print("Configuracion limpiada. Ejecute el script nuevamente.")
+                print("? Configuración limpiada. Ejecute el script nuevamente.")
             return
 
     # Sugerencias
     costo_compra_sugerido = df_historico.iloc[-1]['Costo_Compra_USD'] if not df_historico.empty else COSTO_COMPRA_BASE
 
     imprimir_separador()
-    print(f"\nDIA DE OPERACION: {dia_actual} de {DIAS_CICLO_ACTUAL}")
-    print(f"SALDO EN BOVEDA (ACUMULADO): {formatear_moneda(saldo_boveda)}")
+    print(f"\n?? DÍA DE OPERACIÓN: {dia_actual} de {DIAS_CICLO_ACTUAL}")
+    print(f"?? SALDO EN BÓVEDA (ACUMULADO): {formatear_moneda(saldo_boveda)}")
     imprimir_separador("-")
 
     # Mostrar ultimos dias si no es dia 1
     if dia_actual > 1:
-        if confirmar_accion("\nVer ultimos 3 dias?"):
+        if confirmar_accion("\n¿Ver últimos 3 días?"):
             mostrar_ultimos_dias(ARCHIVO_HISTORICO, 3)
 
     # 3.2 PASO 1 Y 2: COMPRA DE CAPITAL (TARJETA)
@@ -293,9 +296,10 @@ def ejecutar_dia():
     capital_actual = 0.0
     tipo_operacion = ""
 
-    # Flujo de capital
+    # Flujo de capital: Pregunta si quiere usar el saldo acumulado o agregar nuevo
     if saldo_boveda > 0 and dia_actual > 1:
-        print(f"\nCapital acumulado disponible en Boveda: {formatear_moneda(saldo_boveda)}")
+        # Dias > 1: Usar saldo disponible
+        print(f"\n?? Capital acumulado disponible en Bóveda: {formatear_moneda(saldo_boveda)}")
         
         capital_actual = validar_numero_positivo(
             f"-> PASO 1: Monto USD a operar hoy (Enter = {formatear_moneda(saldo_boveda)}): ",
@@ -303,19 +307,20 @@ def ejecutar_dia():
             maximo=saldo_boveda
         )
 
-        costo_compra_actual = 1.0
+        costo_compra_actual = 1.0  # Ya está en USD
         tipo_operacion = "REINVERSION"
 
     else:
-        print("\nBoveda vacia o Dia 1. Debe inyectar capital fresco (Tarjeta).")
+        # Dia 1 o Boveda en cero: Obligado a inyectar capital fresco
+        print("\n?? Bóveda vacía o Día 1. Debe inyectar capital fresco (Tarjeta).")
         
         capital_actual = validar_numero_positivo(
             f"-> PASO 1: Monto USD a COMPRAR hoy (Capital Inicial): "
         )
         
         if capital_actual > LIMITE_FINAL_USD:
-            print(f"ADVERTENCIA: El monto excede el limite final ({formatear_moneda(LIMITE_FINAL_USD)}).")
-            if not confirmar_accion("Continuar bajo riesgo?"):
+            print(f"?? ADVERTENCIA: El monto excede el límite final ({formatear_moneda(LIMITE_FINAL_USD)}).")
+            if not confirmar_accion("¿Continuar bajo riesgo?"):
                 return
 
         costo_compra_actual = validar_numero_positivo(
@@ -325,16 +330,18 @@ def ejecutar_dia():
 
         tipo_operacion = "CAPITAL_FRESCO"
 
+        # REGISTRO CRÍTICO DEL CAPITAL GLOBAL INICIAL (Solo Dia 1)
         if dia_actual == 1:
             CAPITAL_INICIAL_GLOBAL = capital_actual
             saldo_boveda += capital_actual
 
-    # Validacion de limite diario
+    # Validacion de limite diario (50% del limite final)
     if capital_actual > LIMITE_FINAL_USD * 0.5:
-        print(f"\nADVERTENCIA: Operar mas del 50% del limite ({formatear_moneda(LIMITE_FINAL_USD * 0.5)}) puede ser riesgoso.")
-        if not confirmar_accion("Desea continuar?"):
+        print(f"\n?? ADVERTENCIA: Operar más del 50% del límite ({formatear_moneda(LIMITE_FINAL_USD * 0.5)}) puede ser riesgoso.")
+        if not confirmar_accion("¿Desea continuar?"):
             return
 
+    # 3.2 AJUSTE DE SALDO DE BOVEDA (Retirar el capital para operar)
     saldo_boveda -= capital_actual
 
     # 3.3 PASO 3: CALCULAR TASA DE VENTA Y PUBLICAR
@@ -357,6 +364,7 @@ def ejecutar_dia():
                 default=tasa_publicacion_sugerida
             )
 
+            # Validar rentabilidad
             simulacion = CicloArbitraje(
                 capital_inicial_usd=capital_actual,
                 tasa_venta_p2p_publicada=tasa_ingresada,
@@ -370,17 +378,17 @@ def ejecutar_dia():
             rentabilidad_ciclo = simulacion.get_rentabilidad_porcentual_por_ciclo()
             
             if rentabilidad_ciclo < 0:
-                print(f"La tasa NO es rentable. Margen: {formatear_porcentaje(rentabilidad_ciclo, 3)}.")
+                print(f"? La tasa NO es rentable. Margen: {formatear_porcentaje(rentabilidad_ciclo, 3)}.")
                 continue
 
             if rentabilidad_ciclo > 2.0:
-                print(f"Margen alto ({formatear_porcentaje(rentabilidad_ciclo)}). Cuidado con la competitividad!")
+                print(f"?? Margen alto ({formatear_porcentaje(rentabilidad_ciclo)}). ¡Cuidado con la competitividad!")
 
-            print(f"Tasa rentable. Margen por ciclo: {formatear_porcentaje(rentabilidad_ciclo)}")
+            print(f"? Tasa rentable. Margen por ciclo: {formatear_porcentaje(rentabilidad_ciclo)}")
             break
             
         except ValueError as e:
-            print(f"Error: {e}")
+            print(f"? Error: {e}")
             continue
 
     # 3.4 PASO 4: VENTA Y CALCULO DE GANANCIA
@@ -393,7 +401,8 @@ def ejecutar_dia():
 
     # PREVIEW DE LA OPERACION
     if not preview_operacion(capital_actual, tasa_ingresada, costo_compra_actual, ciclos):
-        print("\nOperacion cancelada por el usuario.")
+        print("\n? Operación cancelada por el usuario.")
+        # Devolver capital a la boveda
         saldo_boveda += capital_actual
         guardar_estado(saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
         return
@@ -405,32 +414,37 @@ def ejecutar_dia():
     # 3.5 PASO 5: CIERRE Y REINVERSION
 
     capital_final_operacion = capital_actual + ganancia_bruta_diaria
+
+    # Devolver el monto total de la operacion a la Boveda
     saldo_boveda += capital_final_operacion
 
-    print(f"\nGanancia Bruta del Dia: {formatear_moneda(ganancia_bruta_diaria)}")
+    print(f"\n?? Ganancia Bruta del Día: {formatear_moneda(ganancia_bruta_diaria)}")
     
     ganancia_retenida = 0.0
     ganancia_retirada = 0.0
 
-    if confirmar_accion(f"-> PASO 5: Desea RETIRAR la ganancia ({formatear_moneda(ganancia_bruta_diaria)})?"):
+    if confirmar_accion(f"-> PASO 5: ¿Desea RETIRAR la ganancia ({formatear_moneda(ganancia_bruta_diaria)})?"):
+        # Retiro: Se retira la ganancia
         saldo_boveda -= ganancia_bruta_diaria
         ganancia_retirada = ganancia_bruta_diaria
         ganancia_retenida = 0.0
-        print(f"Retiro completado. {formatear_moneda(ganancia_bruta_diaria)} retirado de la boveda.")
+        print(f"? Retiro completado. {formatear_moneda(ganancia_bruta_diaria)} retirado de la bóveda.")
     else:
+        # Reinversion total
         ganancia_retenida = ganancia_bruta_diaria
         ganancia_retirada = 0.0
-        print(f"Reinversion total. {formatear_moneda(ganancia_bruta_diaria)} permanece en la boveda.")
+        print(f"? Reinversión total. {formatear_moneda(ganancia_bruta_diaria)} permanece en la bóveda.")
 
-    # Aplicar el limite
+    # Aplicar el limite (Si estamos en el ultimo dia, el saldo debe ser LIMITE_FINAL_USD)
     if dia_actual == DIAS_CICLO_ACTUAL:
         if saldo_boveda > LIMITE_FINAL_USD:
             exceso = saldo_boveda - LIMITE_FINAL_USD
-            print(f"\nLimite alcanzado. Exceso de {formatear_moneda(exceso)} sera ajustado.")
+            print(f"\n?? Límite alcanzado. Exceso de {formatear_moneda(exceso)} será ajustado.")
             ganancia_retenida -= exceso
             saldo_boveda = LIMITE_FINAL_USD
             capital_final_operacion = LIMITE_FINAL_USD
 
+    # Calcular ROI del dia
     roi_dia = (ganancia_bruta_diaria / capital_actual) * 100 if capital_actual > 0 else 0
 
     # 3.6 REGISTRO
@@ -455,26 +469,27 @@ def ejecutar_dia():
     guardar_estado(saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
 
     # Reporte
-    imprimir_titulo("RESUMEN DEL DIA")
-    print(f"\nGanancia Bruta del Dia:       {formatear_moneda(ganancia_bruta_diaria)}")
-    print(f"Ganancia Retenida (Boveda):   {formatear_moneda(ganancia_retenida)}")
-    print(f"Ganancia Retirada:             {formatear_moneda(ganancia_retirada)}")
-    print(f"SALDO BOVEDA para manana:     {formatear_moneda(saldo_boveda)}")
-    print(f"ROI del Dia:                   {formatear_porcentaje(roi_dia)}")
+    imprimir_titulo("? RESUMEN DEL DÍA")
+    print(f"\n?? Ganancia Bruta del Día:       {formatear_moneda(ganancia_bruta_diaria)}")
+    print(f"?? Ganancia Retenida (Bóveda):   {formatear_moneda(ganancia_retenida)}")
+    print(f"?? Ganancia Retirada:             {formatear_moneda(ganancia_retirada)}")
+    print(f"?? SALDO BÓVEDA para mañana:     {formatear_moneda(saldo_boveda)}")
+    print(f"?? ROI del Día:                   {formatear_porcentaje(roi_dia)}")
     imprimir_separador()
 
     if dia_actual == DIAS_CICLO_ACTUAL:
         resumen_final(df_historico, saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
         
-        if confirmar_accion("\nDesea ver el reporte detallado completo?"):
+        if confirmar_accion("\n¿Desea ver el reporte detallado completo?"):
             generar_reporte_ciclo(ARCHIVO_HISTORICO, CAPITAL_INICIAL_GLOBAL)
         
-        if confirmar_accion("\nLimpiar configuracion para nuevo ciclo?"):
+        # Limpiar archivos de configuracion para proximo ciclo
+        if confirmar_accion("\n¿Limpiar configuración para nuevo ciclo?"):
             os.remove(ARCHIVO_CONFIG)
-            print("Configuracion limpiada.")
+            print("? Configuración limpiada.")
 
     elif dia_actual < DIAS_CICLO_ACTUAL:
-        print(f"\nHistorial guardado. Listo para operar el Dia {dia_actual + 1}.")
+        print(f"\n? Historial guardado. Listo para operar el Día {dia_actual + 1}.")
 
 # --------------------------------------------------------------------------
 # --- 4. MENU PRINCIPAL ---
@@ -484,16 +499,16 @@ def menu_principal():
     """Menu principal con opciones adicionales"""
     
     while True:
-        imprimir_titulo("CONTROL DE ARBITRAJE P2P - MENU PRINCIPAL")
-        print("\n1. Ejecutar Operacion del Dia")
-        print("2. Ver Reporte del Ciclo Actual")
-        print("3. Ver Ultimos 5 Dias")
-        print("4. Reiniciar Ciclo (Limpiar Estado)")
-        print("5. Crear Backup Manual")
-        print("6. Salir")
+        imprimir_titulo("?? CONTROL DE ARBITRAJE P2P - MENÚ PRINCIPAL")
+        print("\n1. ?? Ejecutar Operación del Día")
+        print("2. ?? Ver Reporte del Ciclo Actual")
+        print("3. ?? Ver Últimos 5 Días")
+        print("4. ?? Reiniciar Ciclo (Limpiar Estado)")
+        print("5. ?? Crear Backup Manual")
+        print("6. ?? Salir")
         imprimir_separador()
         
-        opcion = input("\nSeleccione una opcion (1-6): ").strip()
+        opcion = input("\nSeleccione una opción (1-6): ").strip()
         
         if opcion == "1":
             ejecutar_dia()
@@ -509,13 +524,13 @@ def menu_principal():
             input("\nPresione Enter para continuar...")
         
         elif opcion == "4":
-            if confirmar_accion("Esta seguro de reiniciar el ciclo? Se perdera el progreso actual"):
+            if confirmar_accion("?? ¿Está seguro de reiniciar el ciclo? Se perderá el progreso actual"):
                 if os.path.exists(ARCHIVO_CONFIG):
                     crear_backup(ARCHIVO_CONFIG)
                     os.remove(ARCHIVO_CONFIG)
-                    print("Ciclo reiniciado.")
+                    print("? Ciclo reiniciado.")
                 else:
-                    print("No hay ciclo activo.")
+                    print("?? No hay ciclo activo.")
             input("\nPresione Enter para continuar...")
         
         elif opcion == "5":
@@ -524,11 +539,11 @@ def menu_principal():
             input("\nPresione Enter para continuar...")
         
         elif opcion == "6":
-            print("\nHasta luego!")
+            print("\n?? ¡Hasta luego!")
             break
         
         else:
-            print("Opcion no valida.")
+            print("? Opción no válida.")
             input("\nPresione Enter para continuar...")
 
 
@@ -536,8 +551,8 @@ if __name__ == "__main__":
     try:
         menu_principal()
     except KeyboardInterrupt:
-        print("\n\nOperacion interrumpida por el usuario.")
+        print("\n\n?? Operación interrumpida por el usuario.")
     except Exception as e:
-        print(f"\nERROR FATAL: {e}")
+        print(f"\n? ERROR FATAL: {e}")
         import traceback
         traceback.print_exc()
