@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infografía: El Negocio del Arbitraje Inverso P2P</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 450px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 350px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+        .gradient-text {
+            background: linear-gradient(to right, #66B2FF, #CCE5FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .flow-arrow {
+            color: #0073E6;
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+
+        <header class="text-center my-12">
+            <h1 class="text-4xl md:text-6xl font-black gradient-text">El Negocio del Arbitraje Inverso P2P</h1>
+            <p class="mt-4 text-lg text-gray-400 max-w-3xl mx-auto">Una guía visual para capitalizar las ineficiencias del mercado, basada en un modelo de negocio real y un sistema de control en Python.</p>
+        </header>
+
+        <main>
+            <section id="opportunity" class="my-16">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-white">La Oportunidad del Mercado</h2>
+                    <p class="mt-2 text-gray-400">El arbitraje existe por la diferencia de precios. El análisis identificó un amplio margen entre el costo de adquirir USDT con tarjeta y el precio al que los usuarios P2P están dispuestos a comprarlo.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 text-center">
+                    <div class="bg-slate-800/50 rounded-lg shadow-xl p-8 border border-slate-700">
+                        <h3 class="text-xl font-semibold text-gray-400">Costo de Compra (Tarjeta)</h3>
+                        <p class="text-6xl font-black text-red-400 my-4">1.044 <span class="text-3xl text-gray-400">USD/USDT</span></p>
+                        <p class="text-sm text-gray-500">Tasa efectiva real al comprar USDT directamente en Binance, incluyendo comisiones y spread.</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-lg shadow-xl p-8 border border-slate-700">
+                        <h3 class="text-xl font-semibold text-gray-400">Precio de Venta (P2P)</h3>
+                        <p class="text-6xl font-black text-green-400 my-4">1.129 <span class="text-3xl text-gray-400">USD/USDT</span></p>
+                        <p class="text-sm text-gray-500">Tasa de venta objetivo como anunciante P2P para ser competitivo y altamente rentable.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="strategy" class="my-24">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-white">La Estrategia: Flujo Operativo Diario</h2>
+                    <p class="mt-2 text-gray-400">El éxito del modelo se basa en un ciclo diario de 5 pasos, gestionado por el software de control.</p>
+                </div>
+                 <div class="flex flex-col md:flex-row items-center justify-center space-y-8 md:space-y-0 md:space-x-4 text-center">
+                    <div class="bg-slate-800 p-4 rounded-lg shadow-lg w-full md:w-1/6">
+                        <div class="text-blue-400 text-3xl font-bold">1</div>
+                        <h3 class="font-semibold mt-2">Comprar Capital</h3>
+                        <p class="text-xs text-gray-400">Inyectar USD (Tarjeta) para comprar USDT.</p>
+                    </div>
+                    <div class="text-3xl font-mono flow-arrow transform rotate-90 md:rotate-0">?</div>
+                    <div class="bg-slate-800 p-4 rounded-lg shadow-lg w-full md:w-1/6">
+                        <div class="text-blue-400 text-3xl font-bold">2</div>
+                        <h3 class="font-semibold mt-2">Registrar Costo</h3>
+                        <p class="text-xs text-gray-400">Ingresar la tasa de compra real en el sistema.</p>
+                    </div>
+                    <div class="text-3xl font-mono flow-arrow transform rotate-90 md:rotate-0">?</div>
+                    <div class="bg-slate-800 p-4 rounded-lg shadow-lg w-full md:w-1/6">
+                        <div class="text-blue-400 text-3xl font-bold">3</div>
+                        <h3 class="font-semibold mt-2">Publicar Venta</h3>
+                        <p class="text-xs text-gray-400">Crear anuncio P2P con la tasa de venta objetivo.</p>
+                    </div>
+                     <div class="text-3xl font-mono flow-arrow transform rotate-90 md:rotate-0">?</div>
+                    <div class="bg-slate-800 p-4 rounded-lg shadow-lg w-full md:w-1/6">
+                        <div class="text-blue-400 text-3xl font-bold">4</div>
+                        <h3 class="font-semibold mt-2">Calcular Ganancia</h3>
+                        <p class="text-xs text-gray-400">Registrar ciclos completados tras vender el USDT.</p>
+                    </div>
+                     <div class="text-3xl font-mono flow-arrow transform rotate-90 md:rotate-0">?</div>
+                    <div class="bg-slate-800 p-4 rounded-lg shadow-lg w-full md:w-1/6">
+                        <div class="text-blue-400 text-3xl font-bold">5</div>
+                        <h3 class="font-semibold mt-2">Cerrar y Decidir</h3>
+                        <p class="text-xs text-gray-400">Elegir entre reinvertir o retirar la ganancia diaria.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="metrics" class="my-24">
+                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                    <div>
+                        <h2 class="text-3xl font-bold text-white">Métricas Financieras Clave</h2>
+                        <p class="mt-4 text-gray-400">La rentabilidad de cada ciclo se descompone en tres partes: el costo base de adquisición, la comisión de la plataforma y la ganancia neta. Al publicar una venta a <span class="font-bold text-blue-300">1.129 USD</span>, se genera un margen neto del <span class="font-bold text-green-400">7.74%</span> por ciclo.</p>
+                         <ul class="mt-6 space-y-2 text-gray-300">
+                             <li><span class="font-bold text-red-400">Costo de Adquisición:</span> 1.0442 USD</li>
+                             <li><span class="font-bold text-yellow-400">Comisión Binance (Maker):</span> 0.35% sobre la venta</li>
+                             <li><span class="font-bold text-green-400">Margen de Ganancia Neto:</span> 7.74%</li>
+                         </ul>
+                    </div>
+                    <div class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+                        <div class="chart-container">
+                            <canvas id="metricsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="growth" class="my-24">
+                <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-white">Proyección de Crecimiento Compuesto</h2>
+                    <p class="mt-2 text-gray-400 max-w-3xl mx-auto">Para respetar el límite bancario de $1,000, el ciclo inicia con un capital ajustado. Reinvertir la ganancia diaria genera un crecimiento exponencial a lo largo del ciclo de 30 días.</p>
+                </div>
+                <div class="bg-slate-800/50 p-4 md:p-8 rounded-lg border border-slate-700">
+                    <div class="chart-container" style="max-width: 900px; height: 400px;">
+                        <canvas id="growthChart"></canvas>
+                    </div>
+                </div>
+            </section>
+            
+            <section id="investment" class="my-24">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                     <div class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+                        <div class="chart-container">
+                            <canvas id="investmentChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="lg:order-first">
+                        <h2 class="text-3xl font-bold text-white">Estrategia Final: Ahorro e Inversión</h2>
+                        <p class="mt-4 text-gray-400">Al finalizar el ciclo de 30 días, la ganancia neta total se divide. El 50% se convierte en Bitcoin (BTC) para ahorro a mediano plazo, y el otro 50% se suma al capital base para iniciar el siguiente ciclo de arbitraje con un monto mayor.</p>
+                         <div class="mt-6 grid grid-cols-2 gap-4 text-center">
+                             <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-gray-400">Ganancia Neta Total</p>
+                                <p class="text-2xl font-bold text-blue-300">$897.67</p>
+                             </div>
+                             <div class="bg-slate-800 p-4 rounded-lg">
+                                <p class="text-gray-400">Capital Final</p>
+                                <p class="text-2xl font-bold text-white">$1,000.00</p>
+                             </div>
+                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="risks" class="my-16">
+                 <div class="text-center mb-12">
+                    <h2 class="text-3xl font-bold text-white">Riesgos y Consideraciones</h2>
+                    <p class="mt-2 text-gray-400">Toda estrategia de arbitraje conlleva riesgos que deben ser gestionados.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div class="bg-slate-800/50 rounded-lg p-6 text-center border border-slate-700">
+                        <div class="text-4xl mb-4">??</div>
+                        <h3 class="text-xl font-semibold text-white">Volatilidad del Mercado</h3>
+                        <p class="mt-2 text-gray-400 text-sm">El spread de precios puede reducirse, afectando la rentabilidad. Es vital monitorear las tasas diariamente.</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-lg p-6 text-center border border-slate-700">
+                        <div class="text-4xl mb-4">??</div>
+                        <h3 class="text-xl font-semibold text-white">Límites Bancarios</h3>
+                        <p class="mt-2 text-gray-400 text-sm">Operar con grandes volúmenes puede activar alertas bancarias. El límite de $1,000 ayuda a mitigar este riesgo.</p>
+                    </div>
+                    <div class="bg-slate-800/50 rounded-lg p-6 text-center border border-slate-700">
+                        <div class="text-4xl mb-4">??</div>
+                        <h3 class="text-xl font-semibold text-white">Competencia P2P</h3>
+                        <p class="mt-2 text-gray-400 text-sm">Otros anunciantes pueden ofrecer tasas más agresivas, reduciendo la velocidad de venta o el margen de ganancia.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+        
+        <footer class="text-center mt-16 mb-8 text-gray-500 text-sm">
+            <p>Infografía generada a partir de un modelo de negocio real y sistema de control. Los datos son proyecciones basadas en el análisis de mercado del 16 de Octubre de 2025.</p>
+        </footer>
+    </div>
+
+    <script>
+        const tooltipTitleCallback = {
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            const item = tooltipItems[0];
+                            let label = item.chart.data.labels[item.dataIndex];
+                            if (Array.isArray(label)) {
+                              return label.join(' ');
+                            } else {
+                              return label;
+                            }
+                        }
+                    }
+                },
+                 legend: {
+                    labels: {
+                        color: '#d1d5db'
+                    }
+                }
+            }
+        };
+        
+        const brilliantBlues = ['#004AAD', '#0073E6', '#66B2FF'];
+        const statusColors = { cost: '#ef4444', fee: '#facc15', profit: '#4ade80' };
+
+        new Chart(document.getElementById('metricsChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Costo de Adquisición (1.0442)', 'Comisión Binance (0.35%)', 'Ganancia Neta (7.74%)'],
+                datasets: [{
+                    label: 'Descomposición de Tasa de Venta',
+                    data: [1.04424, (1.12895 * 0.0035), (1.12895 - 1.04424 - (1.12895 * 0.0035))],
+                    backgroundColor: [statusColors.cost, statusColors.fee, statusColors.profit],
+                    borderColor: '#1f2937',
+                    borderWidth: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                 ...tooltipTitleCallback,
+            }
+        });
+
+        const days = Array.from({ length: 31 }, (_, i) => `Día ${i}`);
+        const capitalData = [];
+        let currentCapital = 102.33;
+        const dailyGrowthRate = 0.0774;
+        for (let i = 0; i <= 30; i++) {
+            capitalData.push(currentCapital > 1000 ? 1000 : currentCapital);
+            currentCapital *= (1 + dailyGrowthRate);
+        }
+
+        new Chart(document.getElementById('growthChart'), {
+            type: 'line',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: 'Crecimiento del Capital (USD)',
+                    data: capitalData,
+                    fill: true,
+                    backgroundColor: 'rgba(0, 115, 230, 0.2)',
+                    borderColor: brilliantBlues[1],
+                    tension: 0.1,
+                    pointBackgroundColor: brilliantBlues[2],
+                    pointRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                           color: '#9ca3af',
+                           callback: function(value) {
+                               return '$' + value.toLocaleString();
+                           }
+                        },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 45 },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    }
+                },
+                 ...tooltipTitleCallback,
+            }
+        });
+
+        const netProfit = 897.67;
+        new Chart(document.getElementById('investmentChart'), {
+            type: 'doughnut',
+            data: {
+                labels: [`Ahorro en Bitcoin (50%)`, `Reinversión / Utilidad (50%)`],
+                datasets: [{
+                    label: 'Distribución de Ganancia Neta',
+                    data: [netProfit * 0.5, netProfit * 0.5],
+                    backgroundColor: [brilliantBlues[0], brilliantBlues[2]],
+                    borderColor: '#1f2937',
+                    borderWidth: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                ...tooltipTitleCallback,
+            }
+        });
+    </script>
+</body>
+</html>
