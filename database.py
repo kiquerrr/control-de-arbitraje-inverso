@@ -412,3 +412,45 @@ class ArbitrajeDB:
     
     def cerrar(self):
         self.conn.close()
+
+    def get_estadisticas_ciclo(self, ciclo_id):
+        """Obtiene estadisticas del ciclo"""
+        cursor = self.conn.cursor()
+        
+        # Estadisticas de dias
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_dias,
+                COALESCE(SUM(ganancia_bruta_dia), 0) as ganancia_total,
+                COALESCE(AVG(ganancia_bruta_dia), 0) as ganancia_promedio,
+                COALESCE(SUM(capital_fresco_inyectado), 0) as total_inyectado
+            FROM dias
+            WHERE ciclo_id = ?
+        """, (ciclo_id,))
+        stats_dias = dict(cursor.fetchone())
+        
+        # Estadisticas de ventas
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_ventas,
+                COALESCE(SUM(usdt_operado), 0) as total_usdt,
+                COALESCE(SUM(comision_monto), 0) as total_comisiones
+            FROM ventas v
+            JOIN dias d ON v.dia_id = d.id
+            WHERE d.ciclo_id = ?
+        """, (ciclo_id,))
+        stats_ventas = dict(cursor.fetchone())
+        
+        return {**stats_dias, **stats_ventas}
+
+    def finalizar_ciclo(self, ciclo_id, capital_final, ganancia_total, roi_total):
+        """Finaliza un ciclo"""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            UPDATE ciclos 
+            SET fecha_fin = ?, capital_final = ?, ganancia_total = ?, 
+                roi_total = ?, estado = 'FINALIZADO'
+            WHERE id = ?
+        """, (datetime.now().date(), capital_final, ganancia_total, roi_total, ciclo_id))
+        self.conn.commit()
+        self.log_sistema('INFO', 'database', 'finalizar_ciclo', f'Ciclo {ciclo_id} finalizado')

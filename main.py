@@ -5,6 +5,7 @@
 # ==========================================================
 
 import warnings
+import os
 from datetime import date
 from database import ArbitrajeDB
 from utils import (validar_numero_positivo, validar_entero_rango, 
@@ -166,8 +167,8 @@ def resumen_final_ciclo(db, ciclo_id):
     cursor.execute("""
         SELECT 
             COUNT(*) as total_dias,
-            SUM(ganancia_bruta_dia) as ganancia_total,
-            SUM(capital_fresco_inyectado) as total_inyectado
+            COALESCE(SUM(ganancia_bruta_dia), 0) as ganancia_total,
+            COALESCE(SUM(capital_fresco_inyectado), 0) as total_inyectado
         FROM dias WHERE ciclo_id = ?
     """, (ciclo_id,))
     stats = dict(cursor.fetchone())
@@ -176,17 +177,27 @@ def resumen_final_ciclo(db, ciclo_id):
     cursor.execute("""
         SELECT 
             COUNT(*) as total_ventas,
-            SUM(usdt_operado) as total_usdt,
-            SUM(comision_monto) as total_comisiones
+            COALESCE(SUM(usdt_operado), 0) as total_usdt,
+            COALESCE(SUM(comision_monto), 0) as total_comisiones
         FROM ventas v
         JOIN dias d ON v.dia_id = d.id
         WHERE d.ciclo_id = ?
     """, (ciclo_id,))
     stats_ventas = dict(cursor.fetchone())
     
+    # Obtener capital final del ultimo dia
+    cursor.execute("""
+        SELECT saldo_boveda_final 
+        FROM dias 
+        WHERE ciclo_id = ? 
+        ORDER BY dia_numero DESC 
+        LIMIT 1
+    """, (ciclo_id,))
+    ultimo_saldo = cursor.fetchone()
+    
     capital_inicial = ciclo['capital_inicial']
-    capital_final = ciclo['capital_final']
-    ganancia_total = stats['ganancia_total'] or 0
+    capital_final = ciclo['capital_final'] if ciclo['capital_final'] else (ultimo_saldo[0] if ultimo_saldo else capital_inicial)
+    ganancia_total = capital_final - capital_inicial
     roi_total = (ganancia_total / capital_inicial * 100) if capital_inicial > 0 else 0
     
     imprimir_titulo("RESUMEN FINAL DEL CICLO")
@@ -366,38 +377,101 @@ def ejecutar_dia():
             db.cerrar()
             return
     else:
-        # DIA 1 o BOVEDA VACIA
-        print(f"\n💳 CAPITAL INICIAL REQUERIDO")
-        capital_fresco = validar_numero_positivo("Monto a COMPRAR (tarjeta): $")
-        capital_operado = capital_fresco
-        tasa_compra_promedio = validar_numero_positivo(
-            f"Costo USDT/Tarjeta (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
-            default=COSTO_COMPRA_BASE
-        )
-        tipo_operacion = "CAPITAL_INICIAL"
+        # DIA 1 - Verificar si hay saldo de ciclo anterior
+        if saldo_boveda > 0:
+            print(f"\n💰 Hay saldo en bóveda: {formatear_moneda(saldo_boveda)}")
+            usar_saldo = confirmar_accion("Usar este saldo para operar?")
+            
+            if usar_saldo:
+                capital_operado = saldo_boveda
+                capital_no_operado = 0.0
+                tasa_compra_promedio = 1.0
+                tipo_operacion = "SALDO_ANTERIOR"
+            else:
+                # Quiere inyectar capital fresco
+                capital_no_operado = saldo_boveda
+                capital_fresco = validar_numero_positivo("Monto FRESCO a comprar: $")
+                capital_operado = capital_fresco
+                tasa_compra_promedio = validar_numero_positivo(
+                    f"Costo USDT/Tarjeta (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
+                    default=COSTO_COMPRA_BASE
+                )
+                tipo_operacion = "CAPITAL_FRESCO_DIA1"
+        else:
+            # No hay saldo, obligado a inyectar
+            print(f"\n💳 CAPITAL INICIAL REQUERIDO")
+            capital_fresco = validar_numero_positivo("Monto a COMPRAR (tarjeta): $")
+            capital_operado = capital_fresco
+            tasa_compra_promedio = validar_numero_positivo(
+                f"Costo USDT/Tarjeta (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
+                default=COSTO_COMPRA_BASE
+            )
+            tipo_operacion = "CAPITAL_INICIAL"
     
     # Retirar capital de boveda
     saldo_boveda -= capital_operado
     
     # PASO 2: TASA DE VENTA P2P
     print(f"\n📊 CONFIGURACION DE VENTA P2P")
-    tasa_p2p_mercado = validar_numero_positivo("Tasa P2P del mercado: $")
-    tasa_venta_publicada = validar_numero_positivo(
-        f"Tu tasa publicada (Sugerida {tasa_p2p_mercado:.4f}): $",
-        default=tasa_p2p_mercado
+    print("\n⚠️  IMPORTANTE: Consulta la tasa promedio en:")
+    print("    Binance P2P > Vender USDT > Ver anuncios de COMPRA")
+    print("    (Esa es la tasa a la que otros COMPRAN tu USDT)\n")
+    
+    tasa_p2p_mercado = validar_numero_positivo(
+        "Tasa promedio del mercado P2P BINANCE de hoy: $"
     )
     
-    # Validar rentabilidad
-    tasa_neta = tasa_venta_publicada * (1 - COMISION_P2P_MAKER)
-    margen = ((tasa_neta / tasa_compra_promedio) - 1) * 100
+    # Calcular punto de equilibrio
+    punto_equilibrio = tasa_compra_promedio / (1 - COMISION_P2P_MAKER)
     
-    if margen <= 0:
-        print(f"\n❌ ERROR: Tasa NO rentable (Margen: {margen:.2f}%)")
-        saldo_boveda += capital_operado
-        db.cerrar()
-        return
+    print(f"\n💡 ANALISIS DE RENTABILIDAD:")
+    print(f"   Costo de compra:      {tasa_compra_promedio:.4f} USD/USDT")
+    print(f"   Punto de equilibrio:  {punto_equilibrio:.4f} USD/USDT")
+    print(f"   Tasa mercado:         {tasa_p2p_mercado:.4f} USD/USDT")
     
-    print(f"✅ Tasa rentable. Margen: {formatear_porcentaje(margen)}")
+    # Calcular tasa sugerida (2% de margen sobre punto equilibrio)
+    tasa_sugerida = punto_equilibrio * 1.02
+    
+    # Ajustar si es mayor que el mercado
+    if tasa_sugerida > tasa_p2p_mercado:
+        tasa_sugerida = tasa_p2p_mercado * 0.995  # 0.5% por debajo del mercado
+    
+    print(f"   Tasa sugerida:        {tasa_sugerida:.4f} USD/USDT (competitiva y rentable)")
+    
+    while True:
+        tasa_venta_publicada = validar_numero_positivo(
+            f"\nTu tasa a publicar (Sugerida {tasa_sugerida:.4f}): $",
+            default=tasa_sugerida
+        )
+        
+        # Validar que no esté por debajo del punto de equilibrio
+        if tasa_venta_publicada < punto_equilibrio:
+            print(f"\n❌ ERROR: Tasa por DEBAJO del punto de equilibrio!")
+            print(f"   Tu tasa:    {tasa_venta_publicada:.4f}")
+            print(f"   Minimo:     {punto_equilibrio:.4f}")
+            print(f"   PERDERIAS DINERO con esta tasa.\n")
+            
+            if not confirmar_accion("Reintentar con otra tasa?"):
+                saldo_boveda += capital_operado
+                db.cerrar()
+                return
+            continue
+        
+        # Calcular margen
+        tasa_neta = tasa_venta_publicada * (1 - COMISION_P2P_MAKER)
+        margen = ((tasa_neta / tasa_compra_promedio) - 1) * 100
+        
+        if margen <= 0:
+            print(f"\n❌ Tasa NO rentable (Margen: {margen:.2f}%)")
+            continue
+        
+        if margen < 0.5:
+            print(f"\n⚠️  ADVERTENCIA: Margen muy bajo ({formatear_porcentaje(margen)})")
+            if not confirmar_accion("Continuar con este margen?"):
+                continue
+        
+        print(f"\n✅ Tasa rentable. Margen neto: {formatear_porcentaje(margen)}")
+        break
     
     # PASO 3: REGISTRAR VENTAS DEL DIA
     ventas_montos = solicitar_ventas_del_dia(capital_operado, MAX_VENTAS_DIARIAS)
@@ -598,11 +672,23 @@ def menu_principal():
         elif opcion == "5":
             import shutil
             from datetime import datetime
+            
+            # Crear directorio si no existe
+            backup_dir = 'data/backups'
+            os.makedirs(backup_dir, exist_ok=True)
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = f"data/backups/arbitraje_{timestamp}.db"
-            os.makedirs('data/backups', exist_ok=True)
-            shutil.copy2('data/arbitraje.db', backup_file)
-            print(f"\n✅ Backup creado: {backup_file}")
+            backup_file = f"{backup_dir}/arbitraje_{timestamp}.db"
+            
+            if os.path.exists('data/arbitraje.db'):
+                shutil.copy2('data/arbitraje.db', backup_file)
+                tamano = os.path.getsize(backup_file)
+                print(f"\n✅ Backup creado:")
+                print(f"   Archivo: {backup_file}")
+                print(f"   Tamaño: {tamano/1024:.2f} KB")
+            else:
+                print("\n⚠️ No hay base de datos para respaldar")
+            
             input("\nPresione Enter para continuar...")
         
         elif opcion == "6":
