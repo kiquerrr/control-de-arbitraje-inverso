@@ -1,543 +1,624 @@
 # -*- coding: utf-8 -*-
 # ==========================================================
 # ARCHIVO: main.py
-# DESCRIPCION: Script principal mejorado v2.0
-# MEJORAS: Validaciones, backups, preview, reportes integrados
+# VERSION: 3.0 - Con BD SQLite y ventas individuales
 # ==========================================================
 
-import math
-import pandas as pd
-import os
+import warnings
 from datetime import date
-from arbitraje_core import CicloArbitraje
-from utils import (crear_backup, validar_numero_positivo, validar_entero_rango, 
+from database import ArbitrajeDB
+from utils import (validar_numero_positivo, validar_entero_rango, 
                    confirmar_accion, formatear_moneda, formatear_porcentaje,
                    imprimir_titulo, imprimir_separador)
-from reportes import generar_reporte_ciclo, mostrar_ultimos_dias
 
-# ==========================================================
-# --- 1. PARAMETROS DE CONFIGURACION DEL PROYECTO ---
-# ==========================================================
+warnings.filterwarnings('ignore', category=FutureWarning)
 
-# Parametros del ciclo (Configurables)
-DIAS_CICLO_DEFAULT = 30
-LIMITE_FINAL_USD = 1000.00
-MAX_CICLOS_DIARIOS = 3
-
-# Parametros Financieros (Base para sugerencias)
-COSTO_COMPRA_BASE = 1.04424
+# PARAMETROS GLOBALES (se cargan de la BD)
+MAX_VENTAS_DIARIAS = 3
 COMISION_P2P_MAKER = 0.0035
-TASA_VENTA_OBJETIVO = 1.12895
-
-# Parametros de Inversion
+LIMITE_FINAL_USD = 1000.00
 PORCENTAJE_AHORRO_BTC = 0.50
+COSTO_COMPRA_BASE = 1.04424
 
-# Archivos y Saldo
-ARCHIVO_HISTORICO = 'data/historico_arbitraje.csv'
-ARCHIVO_CONFIG = 'data/config_ciclo.txt'
+# Usuario por defecto (multi-usuario para el futuro)
+USUARIO_ID = 1
 
-# --------------------------------------------------------------------------
-# --- 2. FUNCIONES DE GESTION DE SALDO Y ESTADO ---
-# --------------------------------------------------------------------------
-
-def guardar_estado(saldo: float, dias_ciclo: int, capital_inicial_global: float):
-    """Guarda el saldo total y la duracion del ciclo."""
-    os.makedirs(os.path.dirname(ARCHIVO_HISTORICO), exist_ok=True)
-    with open(ARCHIVO_CONFIG, 'w') as f:
-        f.write(f"SALDO:{round(saldo, 2)}\n")
-        f.write(f"DIAS:{dias_ciclo}\n")
-        f.write(f"C_INICIAL_GLOBAL:{round(capital_inicial_global, 2)}")
-
-def cargar_estado():
-    """Carga el saldo, la duracion del ciclo y el capital inicial global o pide iniciar."""
-    if os.path.exists(ARCHIVO_CONFIG):
-        try:
-            with open(ARCHIVO_CONFIG, 'r') as f:
-                lines = f.readlines()
-                saldo = float(lines[0].split(':')[1].strip())
-                dias = int(lines[1].split(':')[1].strip())
-                try:
-                    capital_global = float(lines[2].split(':')[1].strip())
-                except (IndexError, ValueError):
-                    capital_global = 0.0
-            return saldo, dias, capital_global
-        except Exception as e:
-            print(f"Advertencia: Error al cargar estado: {e}")
-            print("Se creara un nuevo ciclo.")
-            return 0.0, 0, 0.0
-    return 0.0, 0, 0.0
-
-def calcular_capital_inicial_ajustado(modelo: CicloArbitraje) -> float:
-    """Calcula el capital inicial optimo para el Dia 1."""
-    try:
-        tasa_crecimiento = modelo.get_tasa_rentabilidad_por_ciclo()
-        factor_crecimiento_total = (1 + tasa_crecimiento) ** modelo.DIAS_CICLO
-        return modelo.LIMITE_FINAL_USD / factor_crecimiento_total
-    except ValueError:
-        return 0.0
-
-def calcular_tasa_publicacion_sugerida(tasa_mercado: float, costo_compra: float, comision: float) -> float:
-    """Calcula la tasa de venta sugerida basada en el 2% de rentabilidad neta."""
-    rentabilidad_objetivo = 0.02
-    tasa_publicacion_objetivo = costo_compra * (1 + rentabilidad_objetivo) / (1 - comision)
-    return min(tasa_mercado, tasa_publicacion_objetivo)
-
-def crear_dataframe_vacio():
-    """Crea estructura base del DataFrame"""
-    return pd.DataFrame(columns=[
-        'Dia', 'Fecha', 'C_Inicial_USD', 'Tasa_Venta_P2P', 'Ciclos_Completados',
-        'USDT_Comprado_Total', 'Ganancia_Bruta_Diaria', 'Ganancia_Retenida', 
-        'Ganancia_Retirada', 'C_Final_USD', 'Costo_Compra_USD', 
-        'Comision_P2P_Aplicada', 'Tipo_Operacion', 'ROI_Dia'
-    ])
-
-def cargar_historial() -> pd.DataFrame:
-    """Carga el historial desde CSV o crea un nuevo DataFrame."""
-    if os.path.exists(ARCHIVO_HISTORICO):
-        try:
-            df = pd.read_csv(ARCHIVO_HISTORICO)
-            
-            # Validar columnas minimas
-            columnas_requeridas = ['Dia', 'Fecha', 'C_Inicial_USD']
-            if not all(col in df.columns for col in columnas_requeridas):
-                print("Advertencia: CSV corrupto. Creando backup y nuevo archivo.")
-                crear_backup(ARCHIVO_HISTORICO)
-                return crear_dataframe_vacio()
-            
-            # Migrar columnas antiguas si es necesario
-            if 'Ganancia_Neta_Diaria' in df.columns and 'Ganancia_Bruta_Diaria' not in df.columns:
-                df['Ganancia_Bruta_Diaria'] = df['Ganancia_Neta_Diaria']
-                df['Ganancia_Retenida'] = df['Ganancia_Neta_Diaria']
-                df['Ganancia_Retirada'] = 0.0
-                df['Tipo_Operacion'] = 'LEGACY'
-                df['ROI_Dia'] = (df['Ganancia_Bruta_Diaria'] / df['C_Inicial_USD'] * 100).fillna(0)
-            
-            return df
-            
-        except Exception as e:
-            print(f"Error al leer CSV: {e}")
-            crear_backup(ARCHIVO_HISTORICO)
-            return crear_dataframe_vacio()
-    else:
-        return crear_dataframe_vacio()
-
-def guardar_registro(df_historico: pd.DataFrame, nuevo_registro: dict):
-    """Anade un nuevo registro y guarda el DataFrame en CSV."""
-    if os.path.exists(ARCHIVO_HISTORICO):
-        crear_backup(ARCHIVO_HISTORICO)
+def cargar_parametros_desde_bd(db):
+    """Carga parametros del sistema desde la BD"""
+    global MAX_VENTAS_DIARIAS, COMISION_P2P_MAKER, LIMITE_FINAL_USD, PORCENTAJE_AHORRO_BTC
     
-    os.makedirs(os.path.dirname(ARCHIVO_HISTORICO), exist_ok=True)
-    df_actualizado = pd.concat([df_historico, pd.DataFrame([nuevo_registro])], ignore_index=True)
-    df_actualizado.to_csv(ARCHIVO_HISTORICO, index=False)
-    return df_actualizado
-
-def resumen_final(df_historico: pd.DataFrame, saldo_final_boveda: float, dias_ciclo_total: int, capital_inicial_global: float):
-    """Genera el resumen final del ciclo mejorado."""
+    cursor = db.conn.cursor()
+    cursor.execute("SELECT nombre, valor FROM parametros_sistema")
+    params = cursor.fetchall()
     
-    ganancia_neta_total_real = saldo_final_boveda - capital_inicial_global
-    roi_total = (ganancia_neta_total_real / capital_inicial_global) * 100 if capital_inicial_global > 0 else 0
+    for param in params:
+        if param['nombre'] == 'MAX_VENTAS_DIARIAS':
+            MAX_VENTAS_DIARIAS = int(param['valor'])
+        elif param['nombre'] == 'COMISION_P2P_MAKER':
+            COMISION_P2P_MAKER = float(param['valor'])
+        elif param['nombre'] == 'LIMITE_FINAL_USD':
+            LIMITE_FINAL_USD = float(param['valor'])
+        elif param['nombre'] == 'PORCENTAJE_AHORRO_BTC':
+            PORCENTAJE_AHORRO_BTC = float(param['valor'])
+
+def calcular_venta_individual(monto_venta, tasa_venta_p2p, tasa_compra, comision):
+    """Calcula el resultado de UNA venta individual"""
+    usdt_operado = monto_venta / tasa_compra
+    ingreso_bruto = usdt_operado * tasa_venta_p2p
+    comision_monto = ingreso_bruto * comision
+    ingreso_neto = ingreso_bruto - comision_monto
+    ganancia_venta = ingreso_neto - monto_venta
     
-    # Calcular ROI diario promedio compuesto
-    if dias_ciclo_total > 0 and capital_inicial_global > 0:
-        roi_diario_promedio = ((saldo_final_boveda / capital_inicial_global) ** (1/dias_ciclo_total) - 1) * 100
-    else:
-        roi_diario_promedio = 0
-
-    imprimir_titulo("RESUMEN DE CIERRE DE CICLO")
-    
-    print(f"\nDURACION DEL CICLO: {dias_ciclo_total} Dias")
-    print(f"CAPITAL INICIAL: {formatear_moneda(capital_inicial_global)}")
-    print(f"CAPITAL FINAL: {formatear_moneda(saldo_final_boveda)} (Limite: {formatear_moneda(LIMITE_FINAL_USD)})")
-    print(f"GANANCIA NETA TOTAL: {formatear_moneda(ganancia_neta_total_real)}")
-    print(f"ROI TOTAL: {formatear_porcentaje(roi_total)}")
-    print(f"ROI DIARIO PROMEDIO (Compuesto): {formatear_porcentaje(roi_diario_promedio, 3)}")
-    
-    imprimir_separador("-")
-
-    # PLAN DE AHORRO BTC
-    monto_ahorro_btc = ganancia_neta_total_real * PORCENTAJE_AHORRO_BTC
-    monto_utilidad_operativa = saldo_final_boveda - monto_ahorro_btc
-
-    print(f"\nDISTRIBUCION DE GANANCIAS:")
-    print(f"   1. AHORRO EN BITCOIN ({PORCENTAJE_AHORRO_BTC*100:.0f}%): {formatear_moneda(monto_ahorro_btc)} -> Convertir a BTC")
-    print(f"   2. CAPITAL PARA PROXIMO CICLO: {formatear_moneda(monto_utilidad_operativa)}")
-    
-    imprimir_separador("-")
-    
-    # Estadisticas adicionales del ciclo
-    total_usdt_operado = df_historico['USDT_Comprado_Total'].sum()
-    total_ciclos = df_historico['Ciclos_Completados'].sum()
-    
-    print(f"\nESTADISTICAS DEL CICLO:")
-    print(f"   Total USDT Operado: {total_usdt_operado:,.2f} USDT")
-    print(f"   Total Ciclos Completados: {total_ciclos}")
-    print(f"   Promedio Ciclos/Dia: {total_ciclos/dias_ciclo_total:.1f}")
-    
-    # Calcular comisiones totales pagadas
-    if 'Comision_P2P_Aplicada' in df_historico.columns:
-        comisiones_totales = (df_historico['USDT_Comprado_Total'] * 
-                             df_historico['Tasa_Venta_P2P'] * 
-                             df_historico['Comision_P2P_Aplicada']).sum()
-        print(f"   Comisiones P2P Pagadas: {formatear_moneda(comisiones_totales)}")
-    
-    imprimir_separador()
-
-def preview_operacion(capital: float, tasa_venta: float, costo_compra: float, ciclos: int):
-    """Muestra una proyeccion de la operacion antes de confirmar"""
-    
-    try:
-        simulacion = CicloArbitraje(
-            capital_inicial_usd=capital,
-            tasa_venta_p2p_publicada=tasa_venta,
-            costo_compra_usdt=costo_compra,
-            comision_p2p_maker=COMISION_P2P_MAKER,
-            dias_ciclo=30,
-            limite_final_usd=LIMITE_FINAL_USD,
-            max_ciclos_diarios=MAX_CICLOS_DIARIOS
-        )
-        
-        breakdown = simulacion.breakdown_operacion(capital, ciclos)
-        
-        imprimir_titulo("PROYECCION DE LA OPERACION", "=")
-        
-        print(f"\nDATOS DE ENTRADA:")
-        print(f"   Capital a Operar:      {formatear_moneda(capital)}")
-        print(f"   Tasa de Venta P2P:     {tasa_venta:.4f} USD/USDT")
-        print(f"   Costo de Compra:       {costo_compra:.4f} USD/USDT")
-        print(f"   Ciclos a Completar:    {ciclos}")
-        print(f"   Comision P2P:          {formatear_porcentaje(COMISION_P2P_MAKER * 100)}")
-        
-        print(f"\nRESULTADOS PROYECTADOS:")
-        print(f"   USDT Total a Operar:   {breakdown['usdt_total_comprado']:,.2f} USDT")
-        print(f"   Ingreso Bruto Venta:   {formatear_moneda(breakdown['ingreso_bruto_venta'])}")
-        print(f"   Comisiones P2P:        {formatear_moneda(breakdown['comisiones_p2p'])}")
-        print(f"   Ingreso Neto Venta:    {formatear_moneda(breakdown['ingreso_neto_venta'])}")
-        print(f"   Ganancia Neta:         {formatear_moneda(breakdown['ganancia_neta'])}")
-        print(f"   Capital Final:         {formatear_moneda(breakdown['capital_final'])}")
-        print(f"   ROI del Dia:           {formatear_porcentaje(breakdown['roi_dia'])}")
-        print(f"   Rentabilidad/Ciclo:    {formatear_porcentaje(breakdown['rentabilidad_por_ciclo'])}")
-        
-        imprimir_separador()
-        
-        return confirmar_accion("\nConfirmar operacion?")
-        
-    except ValueError as e:
-        print(f"\nERROR: {e}")
-        return False
-
-# --------------------------------------------------------------------------
-# --- 3. FUNCION DE EJECUCION DIARIA ---
-# --------------------------------------------------------------------------
-
-def ejecutar_dia():
-    """Funcion principal que maneja la logica de ejecucion diaria mejorada."""
-
-    df_historico = cargar_historial()
-    saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL = cargar_estado()
-
-    # 3.1 GESTION DEL CICLO (INICIO O CONTINUACION)
-
-    if DIAS_CICLO_ACTUAL == 0:
-        # --- INICIO DEL MACRO CICLO (DIA 1) ---
-        dia_actual = 1
-        imprimir_titulo("INICIO DE NUEVO CICLO")
-        
-        DIAS_CICLO_ACTUAL = validar_entero_rango(
-            "-> Ingrese la duracion total del ciclo (1-90 dias): ", 1, 90
-        )
-        
-        saldo_boveda = 0.0
-        CAPITAL_INICIAL_GLOBAL = 0.0
-    else:
-        # --- CONTINUACION DEL MACRO CICLO ---
-        if df_historico.empty:
-            print("Advertencia: Estado guardado pero historial vacio.")
-            if confirmar_accion("Reiniciar desde dia 1?"):
-                dia_actual = 1
-                saldo_boveda = 0.0
-                CAPITAL_INICIAL_GLOBAL = 0.0
-            else:
-                print("Operacion cancelada.")
-                return
-        else:
-            ultimo_registro = df_historico.iloc[-1]
-            dia_actual = int(ultimo_registro['Dia']) + 1
-
-        if dia_actual > DIAS_CICLO_ACTUAL:
-            print(f"\nEL CICLO HA FINALIZADO (Dia {DIAS_CICLO_ACTUAL}).")
-            resumen_final(df_historico, saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
-            
-            if confirmar_accion("\nDesea ver el reporte detallado?"):
-                generar_reporte_ciclo(ARCHIVO_HISTORICO, CAPITAL_INICIAL_GLOBAL)
-            
-            if confirmar_accion("\nDesea iniciar un nuevo ciclo?"):
-                os.remove(ARCHIVO_CONFIG)
-                print("Configuracion limpiada. Ejecute el script nuevamente.")
-            return
-
-    # Sugerencias
-    costo_compra_sugerido = df_historico.iloc[-1]['Costo_Compra_USD'] if not df_historico.empty else COSTO_COMPRA_BASE
-
-    imprimir_separador()
-    print(f"\nDIA DE OPERACION: {dia_actual} de {DIAS_CICLO_ACTUAL}")
-    print(f"SALDO EN BOVEDA (ACUMULADO): {formatear_moneda(saldo_boveda)}")
-    imprimir_separador("-")
-
-    # Mostrar ultimos dias si no es dia 1
-    if dia_actual > 1:
-        if confirmar_accion("\nVer ultimos 3 dias?"):
-            mostrar_ultimos_dias(ARCHIVO_HISTORICO, 3)
-
-    # 3.2 PASO 1 Y 2: COMPRA DE CAPITAL (TARJETA)
-
-    capital_actual = 0.0
-    tipo_operacion = ""
-
-    # Flujo de capital
-    if saldo_boveda > 0 and dia_actual > 1:
-        print(f"\nCapital acumulado disponible en Boveda: {formatear_moneda(saldo_boveda)}")
-        
-        capital_actual = validar_numero_positivo(
-            f"-> PASO 1: Monto USD a operar hoy (Enter = {formatear_moneda(saldo_boveda)}): ",
-            default=saldo_boveda,
-            maximo=saldo_boveda
-        )
-
-        costo_compra_actual = 1.0
-        tipo_operacion = "REINVERSION"
-
-    else:
-        print("\nBoveda vacia o Dia 1. Debe inyectar capital fresco (Tarjeta).")
-        
-        capital_actual = validar_numero_positivo(
-            f"-> PASO 1: Monto USD a COMPRAR hoy (Capital Inicial): "
-        )
-        
-        if capital_actual > LIMITE_FINAL_USD:
-            print(f"ADVERTENCIA: El monto excede el limite final ({formatear_moneda(LIMITE_FINAL_USD)}).")
-            if not confirmar_accion("Continuar bajo riesgo?"):
-                return
-
-        costo_compra_actual = validar_numero_positivo(
-            f"-> PASO 2: Costo USDT/Tarjeta (Sugerido {costo_compra_sugerido:.4f}): ",
-            default=costo_compra_sugerido
-        )
-
-        tipo_operacion = "CAPITAL_FRESCO"
-
-        if dia_actual == 1:
-            CAPITAL_INICIAL_GLOBAL = capital_actual
-            saldo_boveda += capital_actual
-
-    # Validacion de limite diario
-    if capital_actual > LIMITE_FINAL_USD * 0.5:
-        print(f"\nADVERTENCIA: Operar mas del 50% del limite ({formatear_moneda(LIMITE_FINAL_USD * 0.5)}) puede ser riesgoso.")
-        if not confirmar_accion("Desea continuar?"):
-            return
-
-    saldo_boveda -= capital_actual
-
-    # 3.3 PASO 3: CALCULAR TASA DE VENTA Y PUBLICAR
-
-    tasa_ingresada = None
-    simulacion = None
-
-    while True:
-        try:
-            tasa_p2p_mercado = validar_numero_positivo(
-                f"\n-> PASO 3a: Tasa P2P promedio de Venta (Competencia): "
-            )
-
-            tasa_publicacion_sugerida = calcular_tasa_publicacion_sugerida(
-                tasa_p2p_mercado, costo_compra_actual, COMISION_P2P_MAKER
-            )
-
-            tasa_ingresada = validar_numero_positivo(
-                f"-> PASO 3b: Tasa Real de Venta a publicar (Sugerida {tasa_publicacion_sugerida:.4f}): ",
-                default=tasa_publicacion_sugerida
-            )
-
-            simulacion = CicloArbitraje(
-                capital_inicial_usd=capital_actual,
-                tasa_venta_p2p_publicada=tasa_ingresada,
-                costo_compra_usdt=costo_compra_actual,
-                comision_p2p_maker=COMISION_P2P_MAKER,
-                dias_ciclo=DIAS_CICLO_ACTUAL, 
-                limite_final_usd=LIMITE_FINAL_USD,
-                max_ciclos_diarios=MAX_CICLOS_DIARIOS
-            )
-
-            rentabilidad_ciclo = simulacion.get_rentabilidad_porcentual_por_ciclo()
-            
-            if rentabilidad_ciclo < 0:
-                print(f"La tasa NO es rentable. Margen: {formatear_porcentaje(rentabilidad_ciclo, 3)}.")
-                continue
-
-            if rentabilidad_ciclo > 2.0:
-                print(f"Margen alto ({formatear_porcentaje(rentabilidad_ciclo)}). Cuidado con la competitividad!")
-
-            print(f"Tasa rentable. Margen por ciclo: {formatear_porcentaje(rentabilidad_ciclo)}")
-            break
-            
-        except ValueError as e:
-            print(f"Error: {e}")
-            continue
-
-    # 3.4 PASO 4: VENTA Y CALCULO DE GANANCIA
-
-    ciclos = validar_entero_rango(
-        f"\n-> PASO 4: Ciclos Completados (Max {MAX_CICLOS_DIARIOS}): ", 
-        1, 
-        MAX_CICLOS_DIARIOS
-    )
-
-    # PREVIEW DE LA OPERACION
-    if not preview_operacion(capital_actual, tasa_ingresada, costo_compra_actual, ciclos):
-        print("\nOperacion cancelada por el usuario.")
-        saldo_boveda += capital_actual
-        guardar_estado(saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
-        return
-
-    # Calculos finales
-    ganancia_bruta_diaria = simulacion.calcular_ganancia_neta(capital_actual, ciclos_completados=ciclos)
-    usdt_total_comprado = simulacion.calcular_usdt_comprado(capital_actual, ciclos_completados=ciclos)
-
-    # 3.5 PASO 5: CIERRE Y REINVERSION
-
-    capital_final_operacion = capital_actual + ganancia_bruta_diaria
-    saldo_boveda += capital_final_operacion
-
-    print(f"\nGanancia Bruta del Dia: {formatear_moneda(ganancia_bruta_diaria)}")
-    
-    ganancia_retenida = 0.0
-    ganancia_retirada = 0.0
-
-    if confirmar_accion(f"-> PASO 5: Desea RETIRAR la ganancia ({formatear_moneda(ganancia_bruta_diaria)})?"):
-        saldo_boveda -= ganancia_bruta_diaria
-        ganancia_retirada = ganancia_bruta_diaria
-        ganancia_retenida = 0.0
-        print(f"Retiro completado. {formatear_moneda(ganancia_bruta_diaria)} retirado de la boveda.")
-    else:
-        ganancia_retenida = ganancia_bruta_diaria
-        ganancia_retirada = 0.0
-        print(f"Reinversion total. {formatear_moneda(ganancia_bruta_diaria)} permanece en la boveda.")
-
-    # Aplicar el limite
-    if dia_actual == DIAS_CICLO_ACTUAL:
-        if saldo_boveda > LIMITE_FINAL_USD:
-            exceso = saldo_boveda - LIMITE_FINAL_USD
-            print(f"\nLimite alcanzado. Exceso de {formatear_moneda(exceso)} sera ajustado.")
-            ganancia_retenida -= exceso
-            saldo_boveda = LIMITE_FINAL_USD
-            capital_final_operacion = LIMITE_FINAL_USD
-
-    roi_dia = (ganancia_bruta_diaria / capital_actual) * 100 if capital_actual > 0 else 0
-
-    # 3.6 REGISTRO
-    nuevo_registro = {
-        'Dia': dia_actual, 
-        'Fecha': date.today().strftime("%Y-%m-%d"),
-        'C_Inicial_USD': round(capital_actual, 2), 
-        'Tasa_Venta_P2P': tasa_ingresada,
-        'Ciclos_Completados': ciclos, 
-        'USDT_Comprado_Total': round(usdt_total_comprado, 4),
-        'Ganancia_Bruta_Diaria': round(ganancia_bruta_diaria, 2),
-        'Ganancia_Retenida': round(ganancia_retenida, 2),
-        'Ganancia_Retirada': round(ganancia_retirada, 2),
-        'C_Final_USD': round(capital_final_operacion, 2),
-        'Costo_Compra_USD': simulacion.COSTO_COMPRA_TARJETA, 
-        'Comision_P2P_Aplicada': simulacion.COMISION_BINANCE_P2P,
-        'Tipo_Operacion': tipo_operacion,
-        'ROI_Dia': round(roi_dia, 2)
+    return {
+        'usdt_operado': usdt_operado,
+        'ingreso_bruto': ingreso_bruto,
+        'comision_monto': comision_monto,
+        'ingreso_neto': ingreso_neto,
+        'ganancia_venta': ganancia_venta
     }
 
-    df_historico = guardar_registro(df_historico, nuevo_registro)
-    guardar_estado(saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
+def solicitar_ventas_del_dia(capital_disponible, max_ventas):
+    """Solicita el monto de cada venta individual del dia"""
+    ventas = []
+    capital_restante = capital_disponible
+    
+    print(f"\n{'='*60}")
+    print(f"REGISTRO DE VENTAS DEL DIA")
+    print(f"Capital disponible para operar: {formatear_moneda(capital_disponible)}")
+    print(f"{'='*60}")
+    
+    num_ventas = validar_entero_rango(
+        f"\nCuantas ventas completaste HOY? (Max {max_ventas}): ",
+        1, max_ventas
+    )
+    
+    print(f"\nAhora ingresa el MONTO de cada venta:")
+    print(f"(La suma no puede exceder {formatear_moneda(capital_disponible)})\n")
+    
+    for i in range(1, num_ventas + 1):
+        while True:
+            monto = validar_numero_positivo(
+                f"  Venta #{i} - Monto operado: $",
+                maximo=capital_restante
+            )
+            
+            if monto > capital_restante:
+                print(f"  ⚠️ Error: Solo quedan {formatear_moneda(capital_restante)} disponibles")
+                continue
+            
+            ventas.append(monto)
+            capital_restante -= monto
+            print(f"  ✅ Registrada. Restante: {formatear_moneda(capital_restante)}\n")
+            break
+    
+    total_operado = sum(ventas)
+    
+    if capital_restante > 0.01:
+        usar_resto = confirmar_accion(
+            f"\nQuedan {formatear_moneda(capital_restante)} sin operar. Agregar como venta adicional?"
+        )
+        if usar_resto:
+            ventas.append(capital_restante)
+            capital_restante = 0
+    
+    return ventas
 
-    # Reporte
-    imprimir_titulo("RESUMEN DEL DIA")
-    print(f"\nGanancia Bruta del Dia:       {formatear_moneda(ganancia_bruta_diaria)}")
-    print(f"Ganancia Retenida (Boveda):   {formatear_moneda(ganancia_retenida)}")
-    print(f"Ganancia Retirada:             {formatear_moneda(ganancia_retirada)}")
-    print(f"SALDO BOVEDA para manana:     {formatear_moneda(saldo_boveda)}")
-    print(f"ROI del Dia:                   {formatear_porcentaje(roi_dia)}")
+def preview_ventas(ventas_montos, tasa_venta_p2p, tasa_compra, comision):
+    """Muestra preview de todas las ventas del dia"""
+    imprimir_titulo("PREVIEW DE VENTAS DEL DIA", "=")
+    
+    print(f"\n{'Venta':<8} {'Monto':<12} {'USDT':<12} {'Ingreso':<12} {'Comision':<12} {'Ganancia':<12}")
+    imprimir_separador("-", 80)
+    
+    total_monto = 0
+    total_usdt = 0
+    total_ingreso = 0
+    total_comision = 0
+    total_ganancia = 0
+    
+    for i, monto in enumerate(ventas_montos, 1):
+        resultado = calcular_venta_individual(monto, tasa_venta_p2p, tasa_compra, comision)
+        
+        print(f"#{i:<7} {formatear_moneda(monto):<12} "
+              f"{resultado['usdt_operado']:>10.2f} "
+              f"{formatear_moneda(resultado['ingreso_bruto']):<12} "
+              f"{formatear_moneda(resultado['comision_monto']):<12} "
+              f"{formatear_moneda(resultado['ganancia_venta']):<12}")
+        
+        total_monto += monto
+        total_usdt += resultado['usdt_operado']
+        total_ingreso += resultado['ingreso_bruto']
+        total_comision += resultado['comision_monto']
+        total_ganancia += resultado['ganancia_venta']
+    
+    imprimir_separador("-", 80)
+    print(f"{'TOTAL':<8} {formatear_moneda(total_monto):<12} "
+          f"{total_usdt:>10.2f} "
+          f"{formatear_moneda(total_ingreso):<12} "
+          f"{formatear_moneda(total_comision):<12} "
+          f"{formatear_moneda(total_ganancia):<12}")
+    
+    print(f"\n📊 RESUMEN DEL DIA:")
+    print(f"   Capital operado total: {formatear_moneda(total_monto)}")
+    print(f"   USDT total operado:    {total_usdt:.2f} USDT")
+    print(f"   Ganancia neta dia:     {formatear_moneda(total_ganancia)}")
+    print(f"   ROI del dia:           {formatear_porcentaje((total_ganancia/total_monto)*100)}")
+    
+    imprimir_separador("=", 80)
+    
+    return {
+        'total_monto': total_monto,
+        'total_usdt': total_usdt,
+        'total_ingreso': total_ingreso,
+        'total_comision': total_comision,
+        'total_ganancia': total_ganancia
+    }
+
+def resumen_final_ciclo(db, ciclo_id):
+    """Genera resumen final del ciclo desde la BD"""
+    cursor = db.conn.cursor()
+    
+    # Obtener datos del ciclo
+    cursor.execute("SELECT * FROM ciclos WHERE id = ?", (ciclo_id,))
+    ciclo = dict(cursor.fetchone())
+    
+    # Estadisticas de dias
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_dias,
+            SUM(ganancia_bruta_dia) as ganancia_total,
+            SUM(capital_fresco_inyectado) as total_inyectado
+        FROM dias WHERE ciclo_id = ?
+    """, (ciclo_id,))
+    stats = dict(cursor.fetchone())
+    
+    # Estadisticas de ventas
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_ventas,
+            SUM(usdt_operado) as total_usdt,
+            SUM(comision_monto) as total_comisiones
+        FROM ventas v
+        JOIN dias d ON v.dia_id = d.id
+        WHERE d.ciclo_id = ?
+    """, (ciclo_id,))
+    stats_ventas = dict(cursor.fetchone())
+    
+    capital_inicial = ciclo['capital_inicial']
+    capital_final = ciclo['capital_final']
+    ganancia_total = stats['ganancia_total'] or 0
+    roi_total = (ganancia_total / capital_inicial * 100) if capital_inicial > 0 else 0
+    
+    imprimir_titulo("RESUMEN FINAL DEL CICLO")
+    
+    print(f"\n📅 CICLO: {ciclo['nombre_ciclo']}")
+    print(f"   Duracion: {ciclo['dias_totales']} dias ({stats['total_dias']} completados)")
+    print(f"   Fecha inicio: {ciclo['fecha_inicio']}")
+    print(f"   Fecha fin: {ciclo['fecha_fin']}")
+    
+    print(f"\n💰 RESULTADOS FINANCIEROS:")
+    print(f"   Capital inicial:  {formatear_moneda(capital_inicial)}")
+    print(f"   Capital final:    {formatear_moneda(capital_final)}")
+    print(f"   Ganancia total:   {formatear_moneda(ganancia_total)}")
+    print(f"   ROI total:        {formatear_porcentaje(roi_total)}")
+    
+    if ciclo['dias_totales'] > 0:
+        roi_diario = ((capital_final / capital_inicial) ** (1/ciclo['dias_totales']) - 1) * 100
+        print(f"   ROI diario (compuesto): {formatear_porcentaje(roi_diario, 3)}")
+    
+    print(f"\n📊 OPERACIONES:")
+    print(f"   Total ventas:     {stats_ventas['total_ventas']}")
+    print(f"   USDT operado:     {stats_ventas['total_usdt']:.2f} USDT")
+    print(f"   Comisiones:       {formatear_moneda(stats_ventas['total_comisiones'])}")
+    
+    # Plan de ahorro BTC
+    monto_btc = ganancia_total * PORCENTAJE_AHORRO_BTC
+    monto_proximo = capital_final - monto_btc
+    
+    print(f"\n💎 PLAN DE AHORRO:")
+    print(f"   Para BTC ({PORCENTAJE_AHORRO_BTC*100:.0f}%):  {formatear_moneda(monto_btc)}")
+    print(f"   Proximo ciclo:   {formatear_moneda(monto_proximo)}")
+    
     imprimir_separador()
 
-    if dia_actual == DIAS_CICLO_ACTUAL:
-        resumen_final(df_historico, saldo_boveda, DIAS_CICLO_ACTUAL, CAPITAL_INICIAL_GLOBAL)
-        
-        if confirmar_accion("\nDesea ver el reporte detallado completo?"):
-            generar_reporte_ciclo(ARCHIVO_HISTORICO, CAPITAL_INICIAL_GLOBAL)
-        
-        if confirmar_accion("\nLimpiar configuracion para nuevo ciclo?"):
-            os.remove(ARCHIVO_CONFIG)
-            print("Configuracion limpiada.")
 
-    elif dia_actual < DIAS_CICLO_ACTUAL:
-        print(f"\nHistorial guardado. Listo para operar el Dia {dia_actual + 1}.")
-
-# --------------------------------------------------------------------------
-# --- 4. MENU PRINCIPAL ---
-# --------------------------------------------------------------------------
+def ejecutar_dia():
+    """Funcion principal de ejecucion diaria con BD"""
+    
+    db = ArbitrajeDB()
+    cargar_parametros_desde_bd(db)
+    
+    # Verificar si hay ciclo activo
+    ciclo = db.obtener_ciclo_activo(usuario_id=USUARIO_ID)
+    
+    if not ciclo:
+        # INICIAR NUEVO CICLO
+        imprimir_titulo("INICIO DE NUEVO CICLO")
+        
+        dias_totales = validar_entero_rango(
+            "-> Duracion del ciclo (1-90 dias): ", 1, 90
+        )
+        
+        capital_inicial = validar_numero_positivo(
+            "-> Capital inicial del ciclo: $"
+        )
+        
+        nombre_ciclo = input("-> Nombre del ciclo (Enter para auto): ").strip()
+        
+        ciclo_id = db.iniciar_ciclo(
+            usuario_id=USUARIO_ID,
+            dias_totales=dias_totales,
+            capital_inicial=capital_inicial,
+            nombre_ciclo=nombre_ciclo if nombre_ciclo else None
+        )
+        
+        ciclo = db.obtener_ciclo_activo(usuario_id=USUARIO_ID)
+        saldo_boveda = capital_inicial
+        dia_actual = 1
+        
+        print(f"\n✅ Ciclo iniciado: {ciclo['nombre_ciclo']}")
+        print(f"   ID: {ciclo_id}")
+        print(f"   Capital inicial: {formatear_moneda(capital_inicial)}")
+        
+    else:
+        # CONTINUAR CICLO EXISTENTE
+        ciclo_id = ciclo['id']
+        ultimo_dia = db.obtener_ultimo_dia(ciclo_id)
+        
+        if ultimo_dia:
+            dia_actual = ultimo_dia['dia_numero'] + 1
+            saldo_boveda = ultimo_dia['saldo_boveda_final']
+        else:
+            dia_actual = 1
+            saldo_boveda = ciclo['capital_inicial']
+        
+        # Verificar si el ciclo ya termino
+        if dia_actual > ciclo['dias_totales']:
+            print(f"\n✅ CICLO FINALIZADO")
+            resumen_final_ciclo(db, ciclo_id)
+            
+            if confirmar_accion("\nIniciar nuevo ciclo?"):
+                db.finalizar_ciclo(
+                    ciclo_id=ciclo_id,
+                    capital_final=saldo_boveda,
+                    ganancia_total=saldo_boveda - ciclo['capital_inicial'],
+                    roi_total=((saldo_boveda - ciclo['capital_inicial']) / ciclo['capital_inicial']) * 100
+                )
+                db.cerrar()
+                # Reiniciar
+                return ejecutar_dia()
+            else:
+                db.cerrar()
+                return
+    
+    # OPERACION DEL DIA
+    imprimir_separador()
+    print(f"\n{'='*60}")
+    print(f"DIA {dia_actual} de {ciclo['dias_totales']} - {ciclo['nombre_ciclo']}")
+    print(f"SALDO EN BOVEDA: {formatear_moneda(saldo_boveda)}")
+    print(f"{'='*60}")
+    
+    # PASO 1: DECISION DE CAPITAL A OPERAR
+    capital_disponible_inicio = saldo_boveda
+    capital_operado = 0.0
+    capital_no_operado = 0.0
+    capital_fresco = 0.0
+    tipo_operacion = ""
+    tasa_compra_promedio = COSTO_COMPRA_BASE
+    
+    if saldo_boveda > 0 and dia_actual > 1:
+        # HAY SALDO
+        print(f"\n💰 OPCIONES DE CAPITAL:")
+        print("   1. Operar TODO el saldo")
+        print("   2. Operar PARTE del saldo")
+        print("   3. Solo inyectar capital FRESCO")
+        print("   4. Operar PARTE + capital FRESCO")
+        
+        opcion = input("\nOpcion (1-4): ").strip()
+        
+        if opcion == "1":
+            capital_operado = saldo_boveda
+            capital_no_operado = 0.0
+            tasa_compra_promedio = 1.0
+            tipo_operacion = "REINVERSION_TOTAL"
+            
+        elif opcion == "2":
+            capital_operado = validar_numero_positivo(
+                f"Monto a operar (Max {formatear_moneda(saldo_boveda)}): $",
+                maximo=saldo_boveda
+            )
+            capital_no_operado = saldo_boveda - capital_operado
+            tasa_compra_promedio = 1.0
+            tipo_operacion = "REINVERSION_PARCIAL"
+            
+        elif opcion == "3":
+            capital_no_operado = saldo_boveda
+            capital_fresco = validar_numero_positivo("Monto FRESCO a comprar: $")
+            capital_operado = capital_fresco
+            tasa_compra_promedio = validar_numero_positivo(
+                f"Costo USDT/Tarjeta (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
+                default=COSTO_COMPRA_BASE
+            )
+            tipo_operacion = "CAPITAL_FRESCO_PURO"
+            
+        elif opcion == "4":
+            cap_boveda = validar_numero_positivo(
+                f"Monto de boveda (Max {formatear_moneda(saldo_boveda)}): $",
+                maximo=saldo_boveda
+            )
+            capital_fresco = validar_numero_positivo("Monto FRESCO a comprar: $")
+            costo_fresco = validar_numero_positivo(
+                f"Costo USDT del fresco (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
+                default=COSTO_COMPRA_BASE
+            )
+            
+            capital_operado = cap_boveda + capital_fresco
+            capital_no_operado = saldo_boveda - cap_boveda
+            tasa_compra_promedio = (cap_boveda * 1.0 + capital_fresco * costo_fresco) / capital_operado
+            tipo_operacion = "REINVERSION_MIXTA"
+            
+            print(f"\n  Boveda: {formatear_moneda(cap_boveda)}")
+            print(f"  Fresco: {formatear_moneda(capital_fresco)}")
+            print(f"  Total:  {formatear_moneda(capital_operado)}")
+            print(f"  Costo ponderado: {tasa_compra_promedio:.4f} USD/USDT")
+        else:
+            print("Opcion invalida")
+            db.cerrar()
+            return
+    else:
+        # DIA 1 o BOVEDA VACIA
+        print(f"\n💳 CAPITAL INICIAL REQUERIDO")
+        capital_fresco = validar_numero_positivo("Monto a COMPRAR (tarjeta): $")
+        capital_operado = capital_fresco
+        tasa_compra_promedio = validar_numero_positivo(
+            f"Costo USDT/Tarjeta (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
+            default=COSTO_COMPRA_BASE
+        )
+        tipo_operacion = "CAPITAL_INICIAL"
+    
+    # Retirar capital de boveda
+    saldo_boveda -= capital_operado
+    
+    # PASO 2: TASA DE VENTA P2P
+    print(f"\n📊 CONFIGURACION DE VENTA P2P")
+    tasa_p2p_mercado = validar_numero_positivo("Tasa P2P del mercado: $")
+    tasa_venta_publicada = validar_numero_positivo(
+        f"Tu tasa publicada (Sugerida {tasa_p2p_mercado:.4f}): $",
+        default=tasa_p2p_mercado
+    )
+    
+    # Validar rentabilidad
+    tasa_neta = tasa_venta_publicada * (1 - COMISION_P2P_MAKER)
+    margen = ((tasa_neta / tasa_compra_promedio) - 1) * 100
+    
+    if margen <= 0:
+        print(f"\n❌ ERROR: Tasa NO rentable (Margen: {margen:.2f}%)")
+        saldo_boveda += capital_operado
+        db.cerrar()
+        return
+    
+    print(f"✅ Tasa rentable. Margen: {formatear_porcentaje(margen)}")
+    
+    # PASO 3: REGISTRAR VENTAS DEL DIA
+    ventas_montos = solicitar_ventas_del_dia(capital_operado, MAX_VENTAS_DIARIAS)
+    
+    # PREVIEW
+    preview_totales = preview_ventas(
+        ventas_montos, 
+        tasa_venta_publicada, 
+        tasa_compra_promedio, 
+        COMISION_P2P_MAKER
+    )
+    
+    if not confirmar_accion("\nConfirmar operacion del dia?"):
+        print("\n❌ Operacion cancelada")
+        saldo_boveda += capital_operado
+        db.cerrar()
+        return
+    
+    # REGISTRAR EN BD
+    ganancia_bruta_dia = preview_totales['total_ganancia']
+    capital_final_dia = capital_operado + ganancia_bruta_dia
+    
+    # Devolver a boveda
+    saldo_boveda += capital_final_dia
+    
+    # Decisión de retiro
+    ganancia_retenida = 0.0
+    ganancia_retirada = 0.0
+    
+    if confirmar_accion(f"\nRetirar ganancia ({formatear_moneda(ganancia_bruta_dia)})?"):
+        saldo_boveda -= ganancia_bruta_dia
+        ganancia_retirada = ganancia_bruta_dia
+        print(f"✅ Retiro: {formatear_moneda(ganancia_bruta_dia)}")
+    else:
+        ganancia_retenida = ganancia_bruta_dia
+        print(f"✅ Reinversion: {formatear_moneda(ganancia_bruta_dia)}")
+    
+    # Aplicar limite
+    if dia_actual == ciclo['dias_totales']:
+        if saldo_boveda > LIMITE_FINAL_USD:
+            exceso = saldo_boveda - LIMITE_FINAL_USD
+            ganancia_retenida -= exceso
+            saldo_boveda = LIMITE_FINAL_USD
+            print(f"\n⚠️ Limite aplicado. Exceso: {formatear_moneda(exceso)}")
+    
+    roi_dia = (ganancia_bruta_dia / capital_operado * 100) if capital_operado > 0 else 0
+    
+    # GUARDAR EN BD
+    dia_data = {
+        'dia_numero': dia_actual,
+        'fecha': date.today(),
+        'capital_disponible_inicio': capital_disponible_inicio,
+        'capital_operado': capital_operado,
+        'capital_no_operado': capital_no_operado,
+        'capital_fresco_inyectado': capital_fresco,
+        'saldo_boveda_final': saldo_boveda,
+        'ganancia_bruta_dia': ganancia_bruta_dia,
+        'ganancia_retenida': ganancia_retenida,
+        'ganancia_retirada': ganancia_retirada,
+        'roi_dia': roi_dia,
+        'tipo_operacion': tipo_operacion
+    }
+    
+    dia_id = db.registrar_dia(ciclo_id, USUARIO_ID, dia_data)
+    
+    # Guardar cada venta
+    for i, monto in enumerate(ventas_montos, 1):
+        resultado = calcular_venta_individual(
+            monto, tasa_venta_publicada, tasa_compra_promedio, COMISION_P2P_MAKER
+        )
+        
+        venta_data = {
+            'venta_numero': i,
+            'monto_operado': monto,
+            'usdt_operado': resultado['usdt_operado'],
+            'tasa_venta_p2p': tasa_venta_publicada,
+            'tasa_compra': tasa_compra_promedio,
+            'comision_monto': resultado['comision_monto'],
+            'comision_porcentaje': COMISION_P2P_MAKER,
+            'ingreso_bruto': resultado['ingreso_bruto'],
+            'ingreso_neto': resultado['ingreso_neto'],
+            'ganancia_venta': resultado['ganancia_venta']
+        }
+        
+        db.registrar_venta(dia_id, venta_data)
+    
+    # RESUMEN FINAL DEL DIA
+    imprimir_titulo("RESUMEN DEL DIA")
+    print(f"\n✅ Dia {dia_actual} completado")
+    print(f"   Capital operado:     {formatear_moneda(capital_operado)}")
+    print(f"   Ventas completadas:  {len(ventas_montos)}")
+    print(f"   Ganancia bruta:      {formatear_moneda(ganancia_bruta_dia)}")
+    print(f"   Ganancia retenida:   {formatear_moneda(ganancia_retenida)}")
+    print(f"   Ganancia retirada:   {formatear_moneda(ganancia_retirada)}")
+    print(f"   Saldo boveda:        {formatear_moneda(saldo_boveda)}")
+    print(f"   ROI dia:             {formatear_porcentaje(roi_dia)}")
+    imprimir_separador()
+    
+    # Verificar si es el ultimo dia
+    if dia_actual == ciclo['dias_totales']:
+        db.finalizar_ciclo(
+            ciclo_id=ciclo_id,
+            capital_final=saldo_boveda,
+            ganancia_total=saldo_boveda - ciclo['capital_inicial'],
+            roi_total=((saldo_boveda - ciclo['capital_inicial']) / ciclo['capital_inicial']) * 100
+        )
+        resumen_final_ciclo(db, ciclo_id)
+    else:
+        print(f"\n➡️  Listo para operar Dia {dia_actual + 1}")
+    
+    db.cerrar()
 
 def menu_principal():
-    """Menu principal con opciones adicionales"""
+    """Menu principal del sistema"""
     
     while True:
-        imprimir_titulo("CONTROL DE ARBITRAJE P2P - MENU PRINCIPAL")
+        imprimir_titulo("CONTROL DE ARBITRAJE P2P v3.0 - MENU PRINCIPAL")
         print("\n1. Ejecutar Operacion del Dia")
-        print("2. Ver Reporte del Ciclo Actual")
-        print("3. Ver Ultimos 5 Dias")
-        print("4. Reiniciar Ciclo (Limpiar Estado)")
-        print("5. Crear Backup Manual")
+        print("2. Ver Ciclo Actual")
+        print("3. Historial de Ventas")
+        print("4. Estadisticas")
+        print("5. Crear Backup")
         print("6. Salir")
         imprimir_separador()
         
-        opcion = input("\nSeleccione una opcion (1-6): ").strip()
+        opcion = input("\nOpcion (1-6): ").strip()
         
         if opcion == "1":
             ejecutar_dia()
             input("\nPresione Enter para continuar...")
         
         elif opcion == "2":
-            _, _, capital_inicial = cargar_estado()
-            generar_reporte_ciclo(ARCHIVO_HISTORICO, capital_inicial)
+            db = ArbitrajeDB()
+            ciclo = db.obtener_ciclo_activo(usuario_id=USUARIO_ID)
+            if ciclo:
+                print(f"\n📊 CICLO ACTIVO:")
+                print(f"   ID: {ciclo['id']}")
+                print(f"   Nombre: {ciclo['nombre_ciclo']}")
+                print(f"   Dias: {ciclo['dias_completados']}/{ciclo['dias_totales']}")
+                print(f"   Capital inicial: {formatear_moneda(ciclo['capital_inicial'])}")
+                
+                ultimo_dia = db.obtener_ultimo_dia(ciclo['id'])
+                if ultimo_dia:
+                    print(f"   Saldo actual: {formatear_moneda(ultimo_dia['saldo_boveda_final'])}")
+            else:
+                print("\n⚠️ No hay ciclo activo")
+            db.cerrar()
             input("\nPresione Enter para continuar...")
         
         elif opcion == "3":
-            mostrar_ultimos_dias(ARCHIVO_HISTORICO, 5)
+            db = ArbitrajeDB()
+            ciclo = db.obtener_ciclo_activo(usuario_id=USUARIO_ID)
+            if ciclo:
+                cursor = db.conn.cursor()
+                cursor.execute("""
+                    SELECT v.*, d.dia_numero, d.fecha
+                    FROM ventas v
+                    JOIN dias d ON v.dia_id = d.id
+                    WHERE d.ciclo_id = ?
+                    ORDER BY d.dia_numero, v.venta_numero
+                    LIMIT 20
+                """, (ciclo['id'],))
+                ventas = cursor.fetchall()
+                
+                if ventas:
+                    print(f"\n📋 ULTIMAS 20 VENTAS:")
+                    print(f"{'Dia':<5} {'#':<3} {'Monto':<12} {'USDT':<10} {'Ganancia':<12}")
+                    imprimir_separador("-", 60)
+                    for v in ventas:
+                        print(f"{v['dia_numero']:<5} #{v['venta_numero']:<2} "
+                              f"{formatear_moneda(v['monto_operado']):<12} "
+                              f"{v['usdt_operado']:>8.2f} "
+                              f"{formatear_moneda(v['ganancia_venta']):<12}")
+                else:
+                    print("\n⚠️ Sin ventas registradas")
+            else:
+                print("\n⚠️ No hay ciclo activo")
+            db.cerrar()
             input("\nPresione Enter para continuar...")
         
         elif opcion == "4":
-            if confirmar_accion("Esta seguro de reiniciar el ciclo? Se perdera el progreso actual"):
-                if os.path.exists(ARCHIVO_CONFIG):
-                    crear_backup(ARCHIVO_CONFIG)
-                    os.remove(ARCHIVO_CONFIG)
-                    print("Ciclo reiniciado.")
-                else:
-                    print("No hay ciclo activo.")
+            db = ArbitrajeDB()
+            ciclo = db.obtener_ciclo_activo(usuario_id=USUARIO_ID)
+            if ciclo:
+                stats = db.get_estadisticas_ciclo(ciclo['id'])
+                print(f"\n📊 ESTADISTICAS DEL CICLO:")
+                print(f"   Total dias:      {stats['total_dias']}")
+                print(f"   Total ventas:    {stats['total_ventas']}")
+                print(f"   USDT operado:    {stats['total_usdt']:.2f} USDT")
+                print(f"   Comisiones:      {formatear_moneda(stats['total_comisiones'])}")
+                print(f"   Ganancia total:  {formatear_moneda(stats['ganancia_total'])}")
+                print(f"   Promedio/dia:    {formatear_moneda(stats['ganancia_promedio'])}")
+            else:
+                print("\n⚠️ No hay ciclo activo")
+            db.cerrar()
             input("\nPresione Enter para continuar...")
         
         elif opcion == "5":
-            crear_backup(ARCHIVO_HISTORICO)
-            crear_backup(ARCHIVO_CONFIG)
+            import shutil
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_file = f"data/backups/arbitraje_{timestamp}.db"
+            os.makedirs('data/backups', exist_ok=True)
+            shutil.copy2('data/arbitraje.db', backup_file)
+            print(f"\n✅ Backup creado: {backup_file}")
             input("\nPresione Enter para continuar...")
         
         elif opcion == "6":
-            print("\nHasta luego!")
+            print("\n👋 Hasta luego!")
             break
         
         else:
-            print("Opcion no valida.")
+            print("❌ Opcion invalida")
             input("\nPresione Enter para continuar...")
-
 
 if __name__ == "__main__":
     try:
         menu_principal()
     except KeyboardInterrupt:
-        print("\n\nOperacion interrumpida por el usuario.")
+        print("\n\n⚠️ Operacion interrumpida")
     except Exception as e:
-        print(f"\nERROR FATAL: {e}")
+        print(f"\n❌ ERROR: {e}")
         import traceback
         traceback.print_exc()
