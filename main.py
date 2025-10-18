@@ -261,38 +261,88 @@ def ejecutar_dia():
         )
         
         print("\n💳 CAPITAL INICIAL DEL CICLO")
-        print("\n⚠️ IMPORTANTE: Puedes iniciar de 2 formas:")
-        print("  A) Con USD que comprarás AHORA (capital fresco)")
-        print("  B) Con USDT que YA tienes (de ciclos anteriores)\n")
+        print("="*60)
+        print("\n⚠️ IMPORTANTE: Elige cómo iniciarás este ciclo:")
+        print("\n  A) Compraré USDT AHORA con USD de mi tarjeta/banco")
+        print("  B) Ya TENGO USDT (de ciclos anteriores o wallet)\n")
+        print("="*60)
         
-        tipo_capital = input("Iniciar con: (A) USD fresco  (B) USDT existente? [A/B]: ").strip().upper()
+        tipo_capital = input("\nTu opción [A/B]: ").strip().upper()
         
         if tipo_capital == 'A':
-            # Capital fresco - Preguntar monto y tasa
-            capital_inicial = validar_numero_positivo("-> Monto USD a COMPRAR (tarjeta): $")
+            # ===== OPCIÓN A: COMPRAR USDT AHORA =====
+            print("\n" + "="*60)
+            print("COMPRA DE USDT - PASO A PASO")
+            print("="*60)
             
-            print("\n⚠️ CRITICO: Debes ingresar el COSTO REAL de compra")
-            print("   Ejemplo: Si pagas $104.42 por 100 USDT")
-            print("   El costo es: $1.0442 por cada 1 USDT\n")
+            # PASO 1: Monto en USD que gastará
+            print("\n📌 PASO 1: ¿Cuántos USD vas a GASTAR?")
+            print("   (Es el dinero que saldrá de tu tarjeta/banco)\n")
             
-            tasa_compra_inicial = validar_numero_positivo(
-                f"-> Costo REAL de compra (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
-                default=COSTO_COMPRA_BASE
+            monto_usd_gastar = validar_numero_positivo(
+                "-> Monto USD a gastar: $",
+                maximo=10000
             )
             
-            # Calcular USDT equivalente
-            usdt_equivalente = capital_inicial / tasa_compra_inicial
+            # PASO 2: Tasa de compra de Binance
+            print("\n" + "-"*60)
+            print("📌 PASO 2: ¿A qué TASA comprarás los USDT?")
+            print("   (Ve a Binance > Comprar Crypto > USDT)")
+            print("   Ejemplo: Si dice '1 USDT = $1.0442', ingresa 1.0442\n")
             
-            print(f"\n✅ Con {formatear_moneda(capital_inicial)} compras {usdt_equivalente:.2f} USDT")
-            print(f"   Costo por USDT: {tasa_compra_inicial:.4f} USD/USDT")
+            while True:
+                tasa_compra_inicial = validar_numero_positivo(
+                    f"-> Tasa de compra Binance (Sugerida {COSTO_COMPRA_BASE:.4f}): $",
+                    default=COSTO_COMPRA_BASE
+                )
+                
+                # Validar que la tasa sea razonable (entre 0.95 y 1.15)
+                if 0.95 <= tasa_compra_inicial <= 1.15:
+                    break
+                else:
+                    print(f"\n⚠️ Tasa fuera de rango normal (0.95 - 1.15)")
+                    if confirmar_accion("¿Reintentar?"):
+                        continue
+                    else:
+                        break
+            
+            # PASO 3: Calcular USDT que recibirá
+            usdt_equivalente = monto_usd_gastar / tasa_compra_inicial
+            
+            print("\n" + "="*60)
+            print("✅ CONFIRMACIÓN DE COMPRA")
+            print("="*60)
+            print(f"\n💵 Gastarás:        {formatear_moneda(monto_usd_gastar)} USD")
+            print(f"💱 Tasa Binance:    {tasa_compra_inicial:.4f} USD/USDT")
+            print(f"🪙 Recibirás:       {usdt_equivalente:.4f} USDT")
+            print(f"📊 Costo por USDT:  {tasa_compra_inicial:.4f} USD/USDT")
+            print("\n" + "="*60)
+            
+            if not confirmar_accion("\n¿Confirmar estos datos?"):
+                print("\n❌ Inicio de ciclo cancelado")
+                db.cerrar()
+                return
+            
+            capital_inicial = monto_usd_gastar
             
         else:
-            # USDT existente
-            usdt_equivalente = validar_numero_positivo("-> Cantidad de USDT que tienes: ")
-            capital_inicial = usdt_equivalente  # En este caso, equivale 1:1
+            # ===== OPCIÓN B: YA TIENE USDT =====
+            print("\n" + "="*60)
+            print("USDT EXISTENTE")
+            print("="*60)
+            print("\n🪙 Ingresa la cantidad de USDT que ya tienes")
+            print("   (Estos USDT ya están en tu wallet/cuenta)\n")
+            
+            usdt_equivalente = validar_numero_positivo(
+                "-> Cantidad de USDT disponibles: ",
+                maximo=100000
+            )
+            
+            capital_inicial = usdt_equivalente  # Equivalencia 1:1
             tasa_compra_inicial = 1.0
             
-            print(f"\n✅ Iniciando con {usdt_equivalente:.2f} USDT (equivale a {formatear_moneda(capital_inicial)})")
+            print(f"\n✅ Iniciando con {usdt_equivalente:.4f} USDT")
+            print(f"   (Equivalente a ~{formatear_moneda(capital_inicial)} USD)")
         
         nombre_ciclo = input("\n-> Nombre del ciclo (Enter para auto): ").strip()
         
@@ -385,14 +435,22 @@ def ejecutar_dia():
             tipo_operacion = "REINVERSION_PARCIAL"
             
         elif opcion == "3":
+            # NO operar bóveda, solo capital fresco
             capital_no_operado = saldo_boveda
             capital_fresco = validar_numero_positivo("Monto FRESCO a comprar: $")
-            capital_operado = capital_fresco
-            tasa_compra_promedio = validar_numero_positivo(
+            
+            tasa_compra_fresco = validar_numero_positivo(
                 f"Costo USDT/Tarjeta (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
                 default=COSTO_COMPRA_BASE
             )
+            
+            # IMPORTANTE: capital_operado es SOLO el fresco (bóveda queda sin tocar)
+            capital_operado = capital_fresco
+            tasa_compra_promedio = tasa_compra_fresco
             tipo_operacion = "CAPITAL_FRESCO_PURO"
+            
+            print(f"\n✅ Bóveda SIN tocar: {formatear_moneda(saldo_boveda)}")
+            print(f"✅ Operando SOLO capital fresco: {formatear_moneda(capital_fresco)}")
             
         elif opcion == "4":
             cap_boveda = validar_numero_positivo(

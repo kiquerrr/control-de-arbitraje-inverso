@@ -379,8 +379,20 @@ class ArbitrajeDB:
             dia_data['ganancia_retenida'], dia_data['ganancia_retirada'],
             dia_data['roi_dia'], dia_data['tipo_operacion']
         ))
+        
+        dia_id = cursor.lastrowid
+        
+        # Actualizar contador de días completados
+        cursor.execute("""
+            UPDATE ciclos 
+            SET dias_completados = (
+                SELECT COUNT(*) FROM dias WHERE ciclo_id = ?
+            )
+            WHERE id = ?
+        """, (ciclo_id, ciclo_id))
+        
         self.conn.commit()
-        return cursor.lastrowid
+        return dia_id
     
     def registrar_venta(self, dia_id, venta_data):
         cursor = self.conn.cursor()
