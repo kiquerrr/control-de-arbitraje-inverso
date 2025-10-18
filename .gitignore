@@ -1,5 +1,13 @@
-venv/
+# Ignorar archivos de Python
 __pycache__/
-*.csv
+*.pyc
+
+# Ignorar Entorno Virtual
+venv/
+
+# Ignorar Base de Datos, archivos de estado y backups
+*.db
+data/*.db
+data/*.txt
+data/*.csv
 data/backups/
-main.py.corrupto
