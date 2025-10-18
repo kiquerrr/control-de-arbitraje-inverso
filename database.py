@@ -69,6 +69,8 @@ class ArbitrajeDB:
                 capital_final REAL,
                 ganancia_total REAL,
                 roi_total REAL,
+                tasa_compra_inicial REAL DEFAULT 1.0,
+                tipo_capital_inicial TEXT,
                 estado TEXT DEFAULT 'ACTIVO',
                 notas TEXT,
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
@@ -322,14 +324,14 @@ class ArbitrajeDB:
             """, param)
         self.conn.commit()
     
-    def iniciar_ciclo(self, usuario_id, dias_totales, capital_inicial, nombre_ciclo=None):
+    def iniciar_ciclo(self, usuario_id, dias_totales, capital_inicial, nombre_ciclo=None, tasa_compra_inicial=1.0, tipo_capital='USDT'):
         cursor = self.conn.cursor()
         if not nombre_ciclo:
             nombre_ciclo = f"Ciclo {datetime.now().strftime('%Y-%m-%d')}"
         cursor.execute("""
-            INSERT INTO ciclos (usuario_id, nombre_ciclo, fecha_inicio, dias_totales, capital_inicial, estado)
-            VALUES (?, ?, ?, ?, ?, 'ACTIVO')
-        """, (usuario_id, nombre_ciclo, datetime.now().date(), dias_totales, capital_inicial))
+            INSERT INTO ciclos (usuario_id, nombre_ciclo, fecha_inicio, dias_totales, capital_inicial, tasa_compra_inicial, tipo_capital_inicial, estado)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVO')
+        """, (usuario_id, nombre_ciclo, datetime.now().date(), dias_totales, capital_inicial, tasa_compra_inicial, tipo_capital))
         self.conn.commit()
         return cursor.lastrowid
     

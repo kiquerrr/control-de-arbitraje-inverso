@@ -77,6 +77,11 @@ def solicitar_ventas_del_dia(capital_disponible, max_ventas):
     print(f"(La suma no puede exceder {formatear_moneda(capital_disponible)})\n")
     
     for i in range(1, num_ventas + 1):
+        # Si ya no queda capital, salir del loop
+        if capital_restante < 0.01:
+            print(f"\n✅ Capital agotado. Total de ventas registradas: {len(ventas)}")
+            break
+        
         while True:
             monto = validar_numero_positivo(
                 f"  Venta #{i} - Monto operado: $",
@@ -89,11 +94,16 @@ def solicitar_ventas_del_dia(capital_disponible, max_ventas):
             
             ventas.append(monto)
             capital_restante -= monto
-            print(f"  ✅ Registrada. Restante: {formatear_moneda(capital_restante)}\n")
+            
+            if capital_restante < 0.01:
+                print(f"  ✅ Registrada. Capital AGOTADO\n")
+            else:
+                print(f"  ✅ Registrada. Restante: {formatear_moneda(capital_restante)}\n")
             break
     
     total_operado = sum(ventas)
     
+    # Solo preguntar si queda más de 1 centavo
     if capital_restante > 0.01:
         usar_resto = confirmar_accion(
             f"\nQuedan {formatear_moneda(capital_restante)} sin operar. Agregar como venta adicional?"
@@ -250,17 +260,49 @@ def ejecutar_dia():
             "-> Duracion del ciclo (1-90 dias): ", 1, 90
         )
         
-        capital_inicial = validar_numero_positivo(
-            "-> Capital inicial del ciclo: $"
-        )
+        print("\n💳 CAPITAL INICIAL DEL CICLO")
+        print("\n⚠️ IMPORTANTE: Puedes iniciar de 2 formas:")
+        print("  A) Con USD que comprarás AHORA (capital fresco)")
+        print("  B) Con USDT que YA tienes (de ciclos anteriores)\n")
         
-        nombre_ciclo = input("-> Nombre del ciclo (Enter para auto): ").strip()
+        tipo_capital = input("Iniciar con: (A) USD fresco  (B) USDT existente? [A/B]: ").strip().upper()
+        
+        if tipo_capital == 'A':
+            # Capital fresco - Preguntar monto y tasa
+            capital_inicial = validar_numero_positivo("-> Monto USD a COMPRAR (tarjeta): $")
+            
+            print("\n⚠️ CRITICO: Debes ingresar el COSTO REAL de compra")
+            print("   Ejemplo: Si pagas $104.42 por 100 USDT")
+            print("   El costo es: $1.0442 por cada 1 USDT\n")
+            
+            tasa_compra_inicial = validar_numero_positivo(
+                f"-> Costo REAL de compra (Sugerido {COSTO_COMPRA_BASE:.4f}): $",
+                default=COSTO_COMPRA_BASE
+            )
+            
+            # Calcular USDT equivalente
+            usdt_equivalente = capital_inicial / tasa_compra_inicial
+            
+            print(f"\n✅ Con {formatear_moneda(capital_inicial)} compras {usdt_equivalente:.2f} USDT")
+            print(f"   Costo por USDT: {tasa_compra_inicial:.4f} USD/USDT")
+            
+        else:
+            # USDT existente
+            usdt_equivalente = validar_numero_positivo("-> Cantidad de USDT que tienes: ")
+            capital_inicial = usdt_equivalente  # En este caso, equivale 1:1
+            tasa_compra_inicial = 1.0
+            
+            print(f"\n✅ Iniciando con {usdt_equivalente:.2f} USDT (equivale a {formatear_moneda(capital_inicial)})")
+        
+        nombre_ciclo = input("\n-> Nombre del ciclo (Enter para auto): ").strip()
         
         ciclo_id = db.iniciar_ciclo(
             usuario_id=USUARIO_ID,
             dias_totales=dias_totales,
             capital_inicial=capital_inicial,
-            nombre_ciclo=nombre_ciclo if nombre_ciclo else None
+            nombre_ciclo=nombre_ciclo if nombre_ciclo else None,
+            tasa_compra_inicial=tasa_compra_inicial,
+            tipo_capital='USD_FRESCO' if tipo_capital == 'A' else 'USDT_EXISTENTE'
         )
         
         ciclo = db.obtener_ciclo_activo(usuario_id=USUARIO_ID)
@@ -414,8 +456,8 @@ def ejecutar_dia():
     # PASO 2: TASA DE VENTA P2P
     print(f"\n📊 CONFIGURACION DE VENTA P2P")
     print("\n⚠️  IMPORTANTE: Consulta la tasa promedio en:")
-    print("    Binance P2P > Vender USDT > Ver anuncios de COMPRA")
-    print("    (Esa es la tasa a la que otros COMPRAN tu USDT)\n")
+    print("    Binance P2P > Vender USDT > Ver anuncios de VENTA")
+    print("    (Mira las tasas a las que otros VENDEN USDT)\n")
     
     tasa_p2p_mercado = validar_numero_positivo(
         "Tasa promedio del mercado P2P BINANCE de hoy: $"
@@ -594,10 +636,11 @@ def menu_principal():
         print("3. Historial de Ventas")
         print("4. Estadisticas")
         print("5. Crear Backup")
-        print("6. Salir")
+        print("6. [TEST] RESET COMPLETO - Borrar todo")
+        print("7. Salir")
         imprimir_separador()
         
-        opcion = input("\nOpcion (1-6): ").strip()
+        opcion = input("\nOpcion (1-7): ").strip()
         
         if opcion == "1":
             ejecutar_dia()
@@ -692,11 +735,45 @@ def menu_principal():
             input("\nPresione Enter para continuar...")
         
         elif opcion == "6":
+            print("\n⚠️⚠️⚠️ RESET COMPLETO - SOLO PARA PRUEBAS ⚠️⚠️⚠️")
+            print("\nEsto borrará:")
+            print("  - Todos los ciclos")
+            print("  - Todas las operaciones")
+            print("  - Todo el historial")
+            print("  - BASE DE DATOS COMPLETA\n")
+            
+            if confirmar_accion("¿ESTAS SEGURO?"):
+                if confirmar_accion("¿REALMENTE seguro? (Ultima confirmación)"):
+                    import shutil
+                    from datetime import datetime
+                    
+                    # Hacer backup antes de borrar
+                    if os.path.exists('data/arbitraje.db'):
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        backup = f"data/backups/BEFORE_RESET_{timestamp}.db"
+                        os.makedirs('data/backups', exist_ok=True)
+                        shutil.copy2('data/arbitraje.db', backup)
+                        print(f"✅ Backup guardado: {backup}")
+                    
+                    # Borrar base de datos
+                    if os.path.exists('data/arbitraje.db'):
+                        os.remove('data/arbitraje.db')
+                    
+                    print("\n✅ RESET COMPLETO - Base de datos eliminada")
+                    print("Al ejecutar la próxima operación se creará una BD nueva\n")
+                else:
+                    print("\nReset cancelado")
+            else:
+                print("\nReset cancelado")
+            
+            input("\nPresione Enter para continuar...")
+        
+        elif opcion == "7":
             print("\n👋 Hasta luego!")
             break
         
         else:
-            print("❌ Opcion invalida")
+            print("❌ Opcion invalida (1-7)")
             input("\nPresione Enter para continuar...")
 
 if __name__ == "__main__":
