@@ -2,7 +2,7 @@
 # ==========================================================
 # ARCHIVO: database.py
 # DESCRIPCION: Gestion de base de datos SQLite - Version Profesional
-# VERSION: 3.0 - Multi-usuario, Auditoria, Logs
+# VERSION: 3.0 - Multi-usuario, Auditoria, Logs (CORREGIDO Y LIMPIO)
 # ==========================================================
 
 import sqlite3
@@ -77,6 +77,7 @@ class ArbitrajeDB:
             )
         """)
         
+        # TABLA DIAS - CAMPO tasa_costo_final AGREGADO
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS dias (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,6 +96,7 @@ class ArbitrajeDB:
                 ganancia_retirada REAL,
                 roi_dia REAL,
                 tipo_operacion TEXT,
+                tasa_costo_final REAL DEFAULT 1.0,  
                 notas TEXT,
                 FOREIGN KEY (ciclo_id) REFERENCES ciclos(id),
                 FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
@@ -362,6 +364,7 @@ class ArbitrajeDB:
         row = cursor.fetchone()
         return dict(row) if row else None
     
+    # MÉTODO registrar_dia CORREGIDO PARA INCLUIR tasa_costo_final
     def registrar_dia(self, ciclo_id, usuario_id, dia_data):
         cursor = self.conn.cursor()
         cursor.execute("""
@@ -369,20 +372,21 @@ class ArbitrajeDB:
                 ciclo_id, usuario_id, dia_numero, fecha, capital_disponible_inicio,
                 capital_operado, capital_no_operado, capital_fresco_inyectado,
                 saldo_boveda_final, ganancia_bruta_dia, ganancia_retenida,
-                ganancia_retirada, roi_dia, tipo_operacion
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ganancia_retirada, roi_dia, tipo_operacion, tasa_costo_final
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             ciclo_id, usuario_id, dia_data['dia_numero'], dia_data['fecha'],
             dia_data['capital_disponible_inicio'], dia_data['capital_operado'],
             dia_data['capital_no_operado'], dia_data['capital_fresco_inyectado'],
             dia_data['saldo_boveda_final'], dia_data['ganancia_bruta_dia'],
             dia_data['ganancia_retenida'], dia_data['ganancia_retirada'],
-            dia_data['roi_dia'], dia_data['tipo_operacion']
+            dia_data['roi_dia'], dia_data['tipo_operacion'],
+            dia_data['tasa_costo_final'] 
         ))
         
         dia_id = cursor.lastrowid
         
-        # Actualizar contador de dÃ­as completados
+        # Actualizar contador de días completados
         cursor.execute("""
             UPDATE ciclos 
             SET dias_completados = (
